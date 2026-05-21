@@ -4,7 +4,7 @@ export default function PricingPage() {
   const plans = [
     {
       name: "Bepul tarif",
-      price: "0 so‘m",
+      price: "Bepul",
       subtitle: "Sinab ko‘rish uchun",
       features: [
         "1 ta dala qo‘shish",
@@ -19,13 +19,13 @@ export default function PricingPage() {
     },
     {
       name: "Pro tarif",
-      price: "150 000 so‘m",
+      price: "199 000 so‘m",
       period: "/ oy",
       subtitle: "Doimiy fermerlar uchun",
       badge: "Tavsiya etiladi",
       features: [
         "5 tagacha dala",
-        "Cheksiz rasm tahlili",
+        "1000 tagacha rasm tahlili",
         "Sun’iy yo‘ldosh orqali NDVI tahlili",
         "Suv xavfi va sug‘orish tavsiyasi",
         "Kasallik va zararkunanda bo‘yicha batafsil tavsiya",
