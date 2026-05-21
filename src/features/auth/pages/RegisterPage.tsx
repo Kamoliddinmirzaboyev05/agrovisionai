@@ -22,7 +22,7 @@ export function RegisterPage() {
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
       {/* Left branding panel — desktop only */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-green-700 via-green-600 to-emerald-500 flex-col items-center justify-center p-12 text-white relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-1/2 bg-primary flex-col items-center justify-center p-12 text-white relative overflow-hidden">
         {/* Decorative circles */}
         <div className="absolute -top-20 -left-20 w-80 h-80 bg-white/5 rounded-full" />
         <div className="absolute -bottom-32 -right-16 w-96 h-96 bg-white/5 rounded-full" />

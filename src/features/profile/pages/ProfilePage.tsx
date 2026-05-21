@@ -81,7 +81,7 @@ export function ProfilePage() {
   );
 
   const statsCard = (
-    <div className="bg-gradient-to-r from-green-600 to-green-700 rounded-2xl p-5 text-white flex justify-around">
+    <div className="bg-primary rounded-2xl p-5 text-white flex justify-around shadow-sm">
       <div className="text-center">
         <p className="text-2xl font-extrabold">{loading ? "..." : historyCount}</p>
         <p className="text-xs opacity-80">Tahlillar</p>
@@ -138,7 +138,7 @@ export function ProfilePage() {
           {/* Left: avatar + stats */}
           <div className="flex flex-col gap-4">
             <div className="bg-white rounded-2xl border border-border shadow-sm p-6 flex flex-col items-center gap-3">
-              <div className="w-20 h-20 bg-gradient-to-br from-green-400 to-green-700 rounded-3xl flex items-center justify-center shadow-xl">
+              <div className="w-20 h-20 bg-primary rounded-3xl flex items-center justify-center shadow-lg">
                 <User className="w-10 h-10 text-white" />
               </div>
               <p className="text-lg font-bold text-foreground">{displayName}</p>
@@ -161,7 +161,7 @@ export function ProfilePage() {
   return (
     <div className="flex flex-col h-full px-4 pt-5">
       <div className="flex flex-col items-center py-6">
-        <div className="w-20 h-20 bg-gradient-to-br from-green-400 to-green-700 rounded-3xl flex items-center justify-center shadow-xl mb-3">
+        <div className="w-20 h-20 bg-primary rounded-3xl flex items-center justify-center shadow-lg mb-3">
           <User className="w-10 h-10 text-white" />
         </div>
         <p className="text-xl font-bold text-foreground">{displayName}</p>

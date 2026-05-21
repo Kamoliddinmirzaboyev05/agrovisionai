@@ -124,12 +124,12 @@ export function ResultPage() {
 
   const statusBanner = (
     <div
-      className={`rounded-2xl p-5 text-white shadow-lg bg-gradient-to-r ${
+      className={`rounded-2xl p-5 text-white shadow-lg ${
         riskLevel === "high"
-          ? "from-red-600 to-red-500"
+          ? "bg-destructive"
           : riskLevel === "medium"
-            ? "from-amber-500 to-orange-500"
-            : "from-green-600 to-emerald-500"
+            ? "bg-amber-500"
+            : "bg-primary"
       }`}
     >
       <div className="flex items-center justify-between mb-2">
@@ -176,8 +176,13 @@ export function ResultPage() {
             Maydon
           </p>
           <p className="text-lg font-extrabold text-blue-600">
-            {area || "---"}
+            {area || `${areaHa.toFixed(2)} ha` || "---"}
           </p>
+          {confidence !== "---" && (
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Ishonch: {confidence}
+            </p>
+          )}
         </div>
       </div>
 
@@ -213,7 +218,7 @@ export function ResultPage() {
         </div>
         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-red-400 via-amber-400 to-green-500"
+            className="h-full rounded-full bg-primary"
             style={{ width: `${ndviValue * 100}%` }}
           />
         </div>

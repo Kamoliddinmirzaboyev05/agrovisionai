@@ -8,4 +8,5 @@ export const ROUTES = {
   RESULT: '/field/result',
   HISTORY: '/history',
   PROFILE: '/profile',
+  PRICING: '/pricing',
 } as const;

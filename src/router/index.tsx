@@ -12,6 +12,7 @@ import { LoadingPage } from '@/features/analysis/pages/LoadingPage';
 import { ResultPage } from '@/features/analysis/pages/ResultPage';
 import { HistoryPage } from '@/features/history/pages/HistoryPage';
 import { ProfilePage } from '@/features/profile/pages/ProfilePage';
+import PricingPage from '@/features/pricing/pages/PricingPage';
 import { ROUTES } from './routes';
 
 const router = createBrowserRouter([
@@ -37,6 +38,7 @@ const router = createBrowserRouter([
           { path: ROUTES.RESULT, element: <ResultPage /> },
           { path: ROUTES.HISTORY, element: <HistoryPage /> },
           { path: ROUTES.PROFILE, element: <ProfilePage /> },
+          { path: ROUTES.PRICING, element: <PricingPage /> },
         ],
       },
     ],

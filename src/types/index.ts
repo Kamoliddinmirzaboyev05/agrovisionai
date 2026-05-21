@@ -49,16 +49,54 @@ export interface SavedField {
 
 export interface AnalysisResult {
   risk_level: RiskLevel;
-  ndvi_current: number;
-  ndvi_change: number;
-  ndvi_label: string;
-  drought_index: number;
-  area_ha: number;
-  soil_moisture: string;
-  confidence: string;
-  problem: string;
   status_text: string;
   recommendations: string[];
-  temperature?: number;
-  weather_forecast?: string;
-}
+  ndvi?: {
+    current: number;
+    change: number;
+    drought_index: number;
+    monthly?: any[];
+  };
+  analysis?: {
+    osimlik_holati: string;
+    xulosa: string;
+    qurgochlik: string;
+    ustuvor_harakatlar: string[];
+    dehqonchilik_maslahati: string[];
+    ndvi_baho?: string;
+  };
+  location?: {
+    area_ha: number;
+  };
+  area_ha?: number;
+  soil_moisture?: string;
+  confidence?: string;
+  problem?: string;
+  soil?: {
+    properties?: {
+      ph_h2o?: number;
+      soc?: number;
+      nitrogen?: number;
+      bdod?: number;
+      sand?: number;
+      clay?: number;
+      silt?: number;
+    };
+    surface_temp?: number;
+    moisture_0_1cm?: number;
+  };
+  weather?: {
+    avg_temp: number;
+    annual_precip: number;
+    avg_wind: number;
+    avg_humidity: number;
+    monthly: any[];
+  };
+  source?: string;
+   ndvi_current?: number;
+   ndvi_change?: number;
+   ndvi_label?: string;
+   drought_index?: number;
+   temperature?: number;
+   weather_forecast?: string;
+ }

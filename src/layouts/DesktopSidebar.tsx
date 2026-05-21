@@ -5,6 +5,7 @@ import {
   BarChart3,
   User,
   LayoutDashboard,
+  CreditCard,
   Settings,
   LogOut,
   ChevronRight,
@@ -22,6 +23,7 @@ const SIDEBAR_ITEMS = [
   { path: ROUTES.HOME, icon: LayoutDashboard, label: 'Bosh sahifa' },
   { path: ROUTES.FIELD, icon: Map, label: 'Dala xaritasi' },
   { path: ROUTES.HISTORY, icon: BarChart3, label: 'Tahlil tarixi' },
+  { path: ROUTES.PRICING, icon: CreditCard, label: 'Tariflar' },
   { path: ROUTES.PROFILE, icon: User, label: 'Profil' },
 ];
 

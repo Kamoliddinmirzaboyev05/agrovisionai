@@ -1,10 +1,11 @@
 import { useNavigate, useLocation } from 'react-router';
-import { Home, Map, BarChart3, User } from 'lucide-react';
+import { Home, Map, BarChart3, User, CreditCard } from 'lucide-react';
 import { ROUTES } from '@/router/routes';
 
 const NAV_ITEMS = [
   { path: ROUTES.HOME, icon: Home, label: 'Bosh sahifa' },
   { path: ROUTES.FIELD, icon: Map, label: 'Dala' },
+  { path: ROUTES.PRICING, icon: CreditCard, label: 'Tariflar' },
   { path: ROUTES.HISTORY, icon: BarChart3, label: 'Natijalar' },
   { path: ROUTES.PROFILE, icon: User, label: 'Profil' },
 ];

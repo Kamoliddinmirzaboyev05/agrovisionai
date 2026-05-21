@@ -572,20 +572,6 @@ export const MapboxFieldMap = forwardRef<
       <div className="relative w-full h-full select-none">
         <div ref={mapContainer} className="w-full h-full" />
 
-        {/* Style switch */}
-        <div className="absolute top-3 left-3 z-10 flex bg-white/90 backdrop-blur-sm rounded-xl p-1 shadow-lg border border-green-100">
-          {["satellite", "streets"].map((s) => (
-            <button
-              key={s}
-              onClick={() => setMapStyle(s as any)}
-              className={`px-3 py-2 text-xs font-semibold flex items-center gap-1.5 rounded-lg transition-all ${mapStyle === s ? "bg-green-600 text-white shadow-sm" : "bg-transparent text-gray-600 hover:bg-gray-100"}`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              {s === "satellite" ? "Sun'iy yo'ldosh" : "Xarita"}
-            </button>
-          ))}
-        </div>
-
         {/* Custom Locate Button */}
         <div className="absolute top-20 right-3 z-10">
           <button
