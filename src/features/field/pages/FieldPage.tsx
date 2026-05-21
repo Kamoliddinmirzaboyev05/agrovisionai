@@ -127,6 +127,32 @@ export function FieldPage() {
     area: AreaResult;
   } | null>(null);
 
+  // History from backend
+  const [history, setHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  const fetchHistory = async () => {
+    try {
+      setLoadingHistory(true);
+      const res = await fetch("http://localhost:8000/api/satellite/history/");
+      const data = await res.json();
+      setHistory(data.results || []);
+    } catch (err) {
+      console.error("Failed to fetch history:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  // Analysis panel state
+  const [analysisTab, setAnalysisTab] = useState("NDVI");
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
   // Form state (for selected field)
   const [crop, setCrop] = useState("Pomidor");
   const [lastIrrigation, setLastIrrigation] = useState("");
@@ -215,7 +241,314 @@ export function FieldPage() {
 
   const handleFitFields = () => mapboxRef.current?.fitToFields();
 
-  // ── Fields list panel ──────────────────────────────────────────────────────
+  const handleStartAnalysis = async () => {
+    if (!activeField) return;
+    try {
+      setIsAnalyzing(true);
+      const payload = {
+        coordinates: activeField.polygon.geometry.coordinates[0].map(
+          ([lng, lat]) => ({ lat, lng }),
+        ),
+        area_ha: activeField.area.hectare,
+        save: true,
+        name: activeField.name,
+      };
+      const res = await fetch("http://localhost:8000/api/satellite/analyze/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      setAnalysisResult(data);
+      fetchHistory(); // Refresh history
+    } catch (err) {
+      console.error("Analysis failed:", err);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // ── History Sidebar ────────────────────────────────────────────────────────
+  const historySidebar = (
+    <div className="w-72 flex-shrink-0 bg-[#0f172a] text-white flex flex-col h-full border-r border-white/10">
+      <div className="p-4 border-b border-white/10 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-5 h-5 bg-blue-500 rounded flex items-center justify-center">
+            <Calendar className="w-3 h-3" />
+          </div>
+          <span className="font-bold text-sm">Tarix</span>
+          <span className="bg-blue-600 text-[10px] px-1.5 py-0.5 rounded-full">
+            {history.length}
+          </span>
+        </div>
+        <button className="text-white/50 hover:text-white transition-colors">
+          <ChevronRight className="w-4 h-4 rotate-180" />
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+        {history.map((item) => (
+          <div
+            key={item.id}
+            className="bg-[#1e293b] rounded-xl p-3 border border-white/5 hover:border-blue-500/50 transition-all cursor-pointer group"
+          >
+            <div className="flex items-start justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="bg-orange-500/20 text-orange-500 text-[10px] font-bold px-1.5 py-0.5 rounded border border-orange-500/30">
+                  {item.ndvi_current?.toFixed(2) || "0.00"}
+                </span>
+                <span className="font-bold text-xs truncate max-w-[100px]">
+                  {item.name}
+                </span>
+              </div>
+            </div>
+            <div className="text-[10px] text-white/40 mb-3">
+              {item.center_lat.toFixed(4)}, {item.center_lng.toFixed(4)} •{" "}
+              {item.area_ha.toFixed(1)} ha
+            </div>
+            <div className="flex items-center gap-2 text-[10px] text-white/60 mb-3">
+              <Calendar className="w-3 h-3" />
+              {new Date(item.created_at).toLocaleDateString()} • DI{" "}
+              {item.drought_index?.toFixed(2) || "0.00"}
+            </div>
+            <div className="flex gap-2">
+              <button className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors">
+                <Download className="w-3 h-3" /> Yuklash
+              </button>
+              <button className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors">
+                <X className="w-3 h-3" /> O'chirish
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ── Analysis Panel ─────────────────────────────────────────────────────────
+  const analysisPanel = (
+    <div className="w-[450px] flex-shrink-0 bg-[#0f172a] text-white flex flex-col h-full border-l border-white/10">
+      <div className="p-4 border-b border-white/10 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+          <span className="font-bold text-sm">Sun'iy yo'ldosh tahlili</span>
+        </div>
+        <div className="flex gap-2">
+          <button className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors">
+            <Save className="w-4 h-4" />
+          </button>
+          <button className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors">
+            <FileJson className="w-4 h-4" />
+          </button>
+          <button className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {/* Coordinates Section */}
+        <div className="p-4">
+          <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-3">
+            Belgilangan koordinatalar
+          </p>
+          <div className="flex flex-col gap-1 mb-3">
+            {activeField?.polygon.geometry.coordinates[0]
+              .slice(0, 4)
+              .map((coord, idx) => (
+                <div key={idx} className="flex gap-3 text-xs font-mono">
+                  <span className="text-white/20">{idx + 1}</span>
+                  <span className="text-green-500">{coord[1].toFixed(5)},</span>
+                  <span className="text-green-500">{coord[0].toFixed(5)}</span>
+                </div>
+              ))}
+          </div>
+          <div className="text-xs">
+            <span className="text-white/40 font-medium">Maydon: </span>
+            <span className="text-green-500 font-bold">
+              {activeField?.area?.hectare?.toFixed(2) || "0.00"} ha
+            </span>
+            <span className="text-white/40 font-medium mx-1">•</span>
+            <span className="text-white/40 font-medium">
+              {(activeField?.area?.m2 ? activeField.area.m2 / 1000000 : 0).toFixed(4)} km²
+            </span>
+          </div>
+        </div>
+
+        {/* Action Button */}
+        <div className="px-4 mb-6">
+          <button
+            onClick={handleStartAnalysis}
+            disabled={isAnalyzing}
+            className="w-full py-4 rounded-xl bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-500 hover:to-blue-500 text-sm font-bold flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
+          >
+            {isAnalyzing ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              "🛰️ Haqiqiy ma'lumotlarni tahlil qilish"
+            )}
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-white/10 px-4 mb-6">
+          {["NDVI", "Tuproq", "Ob-havo", "AI Tahlil"].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setAnalysisTab(tab)}
+              className={`flex-1 py-3 text-xs font-bold transition-all border-b-2 ${analysisTab === tab ? "text-green-500 border-green-500" : "text-white/40 border-transparent hover:text-white/60"}`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab Content */}
+        {analysisTab === "NDVI" && (
+          <div className="px-6 pb-8">
+            {analysisResult ? (
+              <>
+                <div className="text-center mb-8">
+                  <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-2">
+                    Joriy NDVI
+                  </p>
+                  <h2 className="text-7xl font-black text-green-500 mb-2">
+                    {analysisResult.ndvi_current?.toFixed(3) || "0.000"}
+                  </h2>
+                  <p className="text-[10px] text-white/30 mb-4">
+                    Normalized Difference Vegetation Index • ERA5
+                  </p>
+                  <div className="flex items-center justify-center gap-3">
+                    <div className="bg-green-500/20 text-green-500 text-[10px] font-bold px-3 py-1 rounded-full border border-green-500/30 flex items-center gap-1">
+                      ↑ +0.058 (1 yil)
+                    </div>
+                    <div className="bg-white/5 text-white/60 text-[10px] font-bold px-3 py-1 rounded-full border border-white/10">
+                      2026-05
+                    </div>
+                  </div>
+                </div>
+
+                {/* NDVI Scale */}
+                <div className="mb-8">
+                  <div className="h-2 w-full rounded-full bg-gradient-to-r from-red-500 via-orange-400 via-yellow-300 via-green-400 to-green-700 relative">
+                    <div
+                      className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-4 border-blue-500 rounded-full shadow-lg"
+                      style={{
+                        left: `${((analysisResult.ndvi_current + 0.1) / 1.1) * 100}%`,
+                      }}
+                    />
+                  </div>
+                  <div className="flex justify-between mt-2 text-[10px] font-mono text-white/30">
+                    <span>-0.1</span>
+                    <span>0.0</span>
+                    <span>0.2</span>
+                    <span>0.4</span>
+                    <span>0.6</span>
+                    <span>0.8</span>
+                    <span>1.0</span>
+                  </div>
+                </div>
+
+                {/* Trend Chart */}
+                <div className="mb-8">
+                  <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-4">
+                    12 oylik NDVI, EVI & NDWI trend
+                  </p>
+                  <div className="h-48 w-full bg-[#1e293b]/50 rounded-xl p-2 border border-white/5">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart
+                        data={[
+                          { name: "05", ndvi: 0.55 },
+                          { name: "06", ndvi: 0.42 },
+                          { name: "07", ndvi: 0.35 },
+                          { name: "08", ndvi: 0.28 },
+                          { name: "09", ndvi: 0.25 },
+                          { name: "10", ndvi: 0.22 },
+                          { name: "11", ndvi: 0.24 },
+                          { name: "12", ndvi: 0.2 },
+                          { name: "01", ndvi: 0.22 },
+                          { name: "02", ndvi: 0.18 },
+                          { name: "03", ndvi: 0.32 },
+                          { name: "04", ndvi: 0.48 },
+                          { name: "05", ndvi: 0.62 },
+                        ]}
+                      >
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          stroke="rgba(255,255,255,0.05)"
+                        />
+                        <XAxis
+                          dataKey="name"
+                          fontSize={10}
+                          stroke="rgba(255,255,255,0.3)"
+                        />
+                        <YAxis
+                          fontSize={10}
+                          stroke="rgba(255,255,255,0.3)"
+                          domain={[-0.1, 1]}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "#1e293b",
+                            border: "none",
+                            borderRadius: "8px",
+                            fontSize: "10px",
+                          }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="ndvi"
+                          stroke="#22c55e"
+                          strokeWidth={2}
+                          dot={{ r: 3, fill: "#22c55e" }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Drought Index Slider */}
+                <div className="mb-8">
+                  <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-4">
+                    Qurg'oqchilik indeksi (DI)
+                  </p>
+                  <div className="bg-[#1e293b] rounded-xl p-4 border border-white/5">
+                    <div className="flex justify-between items-center mb-4">
+                      <span className="text-[10px] font-bold text-white/60">
+                        Juda quruq ⟷ Nam
+                      </span>
+                      <span className="text-xs font-bold text-orange-400">
+                        {analysisResult.drought_index?.toFixed(2) || "0.00"}{" "}
+                        Biroz nam
+                      </span>
+                    </div>
+                    <div className="h-2 w-full bg-white/5 rounded-full relative overflow-hidden">
+                      <div
+                        className="absolute h-full bg-orange-500 rounded-full"
+                        style={{
+                          width: `${(analysisResult.drought_index / 1) * 100}%`,
+                          left: "40%",
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 text-center opacity-40">
+                <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4">
+                  <Map className="w-8 h-8" />
+                </div>
+                <p className="text-xs font-medium max-w-[200px] leading-relaxed">
+                  Xaritada hudud belgilang va haqiqiy sun'iy yo'ldosh
+                  ma'lumotlarini oling
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
   const fieldsList = (
     <div className="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0">
       {savedFields.length === 0 ? (
