@@ -384,7 +384,6 @@ export const MapboxFieldMap = forwardRef<
     // Simulate double-click to close polygon
     const mode = draw.current.getMode();
     if (mode === "draw_polygon") {
-      // @ts-expect-error internal API
       draw.current.changeMode("simple_select");
       // If polygon was created it fires draw.create; if not enough points, just cancel
       const data = draw.current.getAll();
