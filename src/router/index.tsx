@@ -1,0 +1,54 @@
+import { createBrowserRouter, RouterProvider, Navigate } from 'react-router';
+import { AuthProvider } from '@/store/authStore';
+import { ProtectedRoute } from './ProtectedRoute';
+import { AppLayout } from '@/layouts/AppLayout';
+import { AuthLayout } from '@/layouts/AuthLayout';
+import { LoginPage } from '@/features/auth/pages/LoginPage';
+import { RegisterPage } from '@/features/auth/pages/RegisterPage';
+import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
+import { FieldPage } from '@/features/field/pages/FieldPage';
+import { UploadPage } from '@/features/analysis/pages/UploadPage';
+import { LoadingPage } from '@/features/analysis/pages/LoadingPage';
+import { ResultPage } from '@/features/analysis/pages/ResultPage';
+import { HistoryPage } from '@/features/history/pages/HistoryPage';
+import { ProfilePage } from '@/features/profile/pages/ProfilePage';
+import { ROUTES } from './routes';
+
+const router = createBrowserRouter([
+  // Auth routes (redirect to home if already authenticated)
+  {
+    element: <AuthLayout />,
+    children: [
+      { path: ROUTES.LOGIN, element: <LoginPage /> },
+      { path: ROUTES.REGISTER, element: <RegisterPage /> },
+    ],
+  },
+  // Protected app routes
+  {
+    element: <ProtectedRoute />,
+    children: [
+      {
+        element: <AppLayout />,
+        children: [
+          { path: ROUTES.HOME, element: <DashboardPage /> },
+          { path: ROUTES.FIELD, element: <FieldPage /> },
+          { path: ROUTES.UPLOAD, element: <UploadPage /> },
+          { path: ROUTES.LOADING, element: <LoadingPage /> },
+          { path: ROUTES.RESULT, element: <ResultPage /> },
+          { path: ROUTES.HISTORY, element: <HistoryPage /> },
+          { path: ROUTES.PROFILE, element: <ProfilePage /> },
+        ],
+      },
+    ],
+  },
+  // Catch-all
+  { path: '*', element: <Navigate to={ROUTES.HOME} replace /> },
+]);
+
+export function AppRouter() {
+  return (
+    <AuthProvider>
+      <RouterProvider router={router} />
+    </AuthProvider>
+  );
+}
