@@ -24,7 +24,7 @@ export function LoadingPage() {
         const payload = {
           coordinates: fieldData.points,
           area_ha: fieldData.area_ha || 0,
-          save: true,
+          save: false,
           name: fieldData.name || fieldData.crop || 'Dala'
         };
 

@@ -10,24 +10,31 @@ export function ProfilePage() {
   const isMobile = useIsMobile();
   const { user, logout } = useAuth();
   const [notifications, setNotifications] = useState(true);
-  const [historyCount, setHistoryCount] = useState(0);
+  const [history, setHistory] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch("http://localhost:8000/api/satellite/history/")
       .then((res) => res.json())
       .then((data) => {
-        setHistoryCount(data.count || 0);
+        setHistory(data.results || []);
       })
-      .catch((err) => console.error("History fetch error:", err));
+      .catch((err) => console.error("History fetch error:", err))
+      .finally(() => setLoading(false));
   }, []);
+
+  const historyCount = history.length;
+  const totalAreaHa = history.reduce((acc, curr) => acc + (curr.area_ha || 0), 0);
+  const totalSotix = Math.round(totalAreaHa * 100);
+  const uniqueFields = new Set(history.map(h => h.name)).size;
 
   const handleLogout = () => {
     logout();
     navigate(ROUTES.LOGIN, { replace: true });
   };
 
-  const displayName = user?.name || 'Abdullayev Jasur';
-  const displayRegion = user?.region || 'Toshkent viloyati';
+  const displayName = user?.name || '';
+  const displayRegion = user?.region || '';
 
   const settingsCard = (
     <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
@@ -76,17 +83,17 @@ export function ProfilePage() {
   const statsCard = (
     <div className="bg-gradient-to-r from-green-600 to-green-700 rounded-2xl p-5 text-white flex justify-around">
       <div className="text-center">
-        <p className="text-2xl font-extrabold">{historyCount}</p>
+        <p className="text-2xl font-extrabold">{loading ? "..." : historyCount}</p>
         <p className="text-xs opacity-80">Tahlillar</p>
       </div>
       <div className="w-px bg-white/20" />
       <div className="text-center">
-        <p className="text-2xl font-extrabold">3</p>
+        <p className="text-2xl font-extrabold">{loading ? "..." : uniqueFields}</p>
         <p className="text-xs opacity-80">Dalalar</p>
       </div>
       <div className="w-px bg-white/20" />
       <div className="text-center">
-        <p className="text-2xl font-extrabold">65</p>
+        <p className="text-2xl font-extrabold">{loading ? "..." : totalSotix}</p>
         <p className="text-xs opacity-80">Sotix</p>
       </div>
     </div>

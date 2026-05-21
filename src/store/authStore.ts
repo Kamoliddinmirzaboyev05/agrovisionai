@@ -69,7 +69,6 @@ function AuthProvider({ children }: { children: ReactNode }) {
       id: crypto.randomUUID(),
       name: email.split('@')[0].replace(/[._]/g, ' '),
       email,
-      region: 'Toshkent viloyati',
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
     dispatch({ type: 'LOGIN_SUCCESS', payload: user });

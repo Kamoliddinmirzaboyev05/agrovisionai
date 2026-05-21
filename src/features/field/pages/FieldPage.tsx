@@ -14,6 +14,13 @@ import {
   Save,
   FileJson,
   Loader2,
+  Thermometer,
+  Droplets,
+  Wind,
+  CloudRain,
+  AlertTriangle,
+  Lightbulb,
+  Zap,
 } from "lucide-react";
 import {
   MapboxFieldMap,
@@ -135,11 +142,8 @@ export function FieldPage() {
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  // Form state (for selected field)
-  const [crop, setCrop] = useState("Pomidor");
-
-  // Panel view on mobile: 'map' | 'list'
-  const [mobileView, setMobileView] = useState<"map" | "list">("map");
+  // Panel view on mobile: 'map' | 'analysis' | 'history'
+  const [mobileView, setMobileView] = useState<"map" | "analysis" | "history">("map");
 
   const activeField = savedFields.find((f) => f.id === activeFieldId) ?? null;
 
@@ -239,7 +243,7 @@ export function FieldPage() {
           ([lng, lat]) => ({ lat, lng }),
         ),
         area_ha: activeField.area.hectare,
-        save: true,
+        save: false,
         name: activeField.name,
       };
       const res = await fetch("http://localhost:8000/api/satellite/analyze/", {
@@ -307,7 +311,7 @@ export function FieldPage() {
               <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <span className="bg-orange-500/20 text-orange-500 text-[10px] font-bold px-1.5 py-0.5 rounded border border-orange-500/30">
-                    {item.ndvi_current?.toFixed(2) || "0.00"}
+                    {item.ndvi?.current?.toFixed(2) || item.ndvi_current?.toFixed(2) || "0.00"}
                   </span>
                   <span className="font-bold text-xs truncate max-w-[100px]">
                     {item.name}
@@ -315,13 +319,13 @@ export function FieldPage() {
                 </div>
               </div>
               <div className="text-[10px] text-white/40 mb-3 font-mono">
-                {item.center_lat.toFixed(4)}, {item.center_lng.toFixed(4)} •{" "}
-                {item.area_ha.toFixed(1)} ha
+                {item.location?.lat?.toFixed(4) || item.center_lat?.toFixed(4)}, {item.location?.lng?.toFixed(4) || item.center_lng?.toFixed(4)} •{" "}
+                {item.location?.area_ha?.toFixed(1) || item.area_ha?.toFixed(1)} ha
               </div>
               <div className="flex items-center gap-2 text-[10px] text-white/60 mb-3">
                 <Calendar className="w-3 h-3" />
                 {new Date(item.created_at).toLocaleDateString()} • DI{" "}
-                {item.drought_index?.toFixed(2) || "0.00"}
+                {item.ndvi?.drought_index?.toFixed(2) || item.drought_index?.toFixed(2) || "0.00"}
               </div>
               <div className="flex gap-2">
                 <button className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors">
@@ -438,18 +442,19 @@ export function FieldPage() {
                     Joriy NDVI
                   </p>
                   <h2 className="text-7xl font-black text-green-500 mb-2">
-                    {analysisResult.ndvi_current?.toFixed(3) || "0.000"}
+                    {analysisResult.ndvi?.current?.toFixed(3) || "0.000"}
                   </h2>
                   <p className="text-[10px] text-white/30 mb-4">
-                    Normalized Difference Vegetation Index • ERA5
+                    {analysisResult.analysis?.ndvi_baho || "Normalized Difference Vegetation Index"}
                   </p>
                   <div className="flex items-center justify-center gap-3">
-                    <div className="bg-green-500/20 text-green-500 text-[10px] font-bold px-3 py-1 rounded-full border border-green-500/30 flex items-center gap-1">
-                      ↑ +{analysisResult.ndvi_change?.toFixed(3) || "0.058"} (1
-                      yil)
-                    </div>
+                    {analysisResult.ndvi?.change !== undefined && (
+                      <div className="bg-green-500/20 text-green-500 text-[10px] font-bold px-3 py-1 rounded-full border border-green-500/30 flex items-center gap-1">
+                        {analysisResult.ndvi.change >= 0 ? "↑" : "↓"} {analysisResult.ndvi.change >= 0 ? "+" : ""}{analysisResult.ndvi.change?.toFixed(3)}
+                      </div>
+                    )}
                     <div className="bg-white/5 text-white/60 text-[10px] font-bold px-3 py-1 rounded-full border border-white/10">
-                      2026-05
+                      {new Date().toISOString().slice(0, 7)}
                     </div>
                   </div>
                 </div>
@@ -457,12 +462,14 @@ export function FieldPage() {
                 {/* NDVI Scale */}
                 <div className="mb-8">
                   <div className="h-2 w-full rounded-full bg-gradient-to-r from-red-500 via-orange-400 via-yellow-300 via-green-400 to-green-700 relative">
-                    <div
-                      className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-4 border-blue-500 rounded-full shadow-lg transition-all"
-                      style={{
-                        left: `${Math.max(0, Math.min(100, ((analysisResult.ndvi_current + 0.1) / 1.1) * 100))}%`,
-                      }}
-                    />
+                    {analysisResult.ndvi?.current !== undefined && (
+                      <div
+                        className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-4 border-blue-500 rounded-full shadow-lg transition-all"
+                        style={{
+                          left: `${Math.max(0, Math.min(100, ((analysisResult.ndvi.current + 0.1) / 1.1) * 100))}%`,
+                        }}
+                      />
+                    )}
                   </div>
                   <div className="flex justify-between mt-2 text-[10px] font-mono text-white/30">
                     <span>-0.1</span>
@@ -478,58 +485,55 @@ export function FieldPage() {
                 {/* Trend Chart */}
                 <div className="mb-8">
                   <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-4">
-                    12 oylik NDVI, EVI & NDWI trend
+                    NDVI Trend (Oylik)
                   </p>
-                  <div className="h-48 w-full bg-[#1e293b]/50 rounded-xl p-2 border border-white/5">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart
-                        data={[
-                          { name: "05", ndvi: 0.55 },
-                          { name: "06", ndvi: 0.42 },
-                          { name: "07", ndvi: 0.35 },
-                          { name: "08", ndvi: 0.28 },
-                          { name: "09", ndvi: 0.25 },
-                          { name: "10", ndvi: 0.22 },
-                          { name: "11", ndvi: 0.24 },
-                          { name: "12", ndvi: 0.2 },
-                          { name: "01", ndvi: 0.22 },
-                          { name: "02", ndvi: 0.18 },
-                          { name: "03", ndvi: 0.32 },
-                          { name: "04", ndvi: 0.48 },
-                          { name: "05", ndvi: analysisResult.ndvi_current },
-                        ]}
-                      >
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          stroke="rgba(255,255,255,0.05)"
-                        />
-                        <XAxis
-                          dataKey="name"
-                          fontSize={10}
-                          stroke="rgba(255,255,255,0.3)"
-                        />
-                        <YAxis
-                          fontSize={10}
-                          stroke="rgba(255,255,255,0.3)"
-                          domain={[-0.1, 1]}
-                        />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: "#1e293b",
-                            border: "none",
-                            borderRadius: "8px",
-                            fontSize: "10px",
-                          }}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="ndvi"
-                          stroke="#22c55e"
-                          strokeWidth={2}
-                          dot={{ r: 3, fill: "#22c55e" }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
+                  <div className="h-48 w-full bg-[#1e293b]/50 rounded-xl p-2 border border-white/5 flex items-center justify-center">
+                    {analysisResult.ndvi?.monthly && analysisResult.ndvi.monthly.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={analysisResult.ndvi.monthly}>
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke="rgba(255,255,255,0.05)"
+                          />
+                          <XAxis
+                            dataKey="month"
+                            fontSize={10}
+                            stroke="rgba(255,255,255,0.3)"
+                            tickFormatter={(v) => v.split("-")[1]}
+                          />
+                          <YAxis
+                            fontSize={10}
+                            stroke="rgba(255,255,255,0.3)"
+                            domain={[-0.1, 1]}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: "#1e293b",
+                              border: "none",
+                              borderRadius: "8px",
+                              fontSize: "10px",
+                            }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="ndvi"
+                            stroke="#22c55e"
+                            strokeWidth={2}
+                            dot={{ r: 3, fill: "#22c55e" }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="ndwi"
+                            stroke="#3b82f6"
+                            strokeWidth={1}
+                            strokeDasharray="3 3"
+                            dot={false}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <p className="text-[10px] text-white/20 italic">Trend ma'lumotlari mavjud emas</p>
+                    )}
                   </div>
                 </div>
 
@@ -543,16 +547,17 @@ export function FieldPage() {
                       <span className="text-[10px] font-bold text-white/60">
                         Juda quruq ⟷ Nam
                       </span>
-                      <span className="text-xs font-bold text-orange-400">
-                        {analysisResult.drought_index?.toFixed(2) || "0.00"}{" "}
-                        {analysisResult.drought_index > 0.5 ? "Nam" : "Biroz quruq"}
+                      <span className={`text-xs font-bold ${analysisResult.ndvi?.drought_index < 0 ? "text-orange-400" : "text-blue-400"}`}>
+                        {analysisResult.ndvi?.drought_index?.toFixed(2) || "0.00"}{" "}
+                        {analysisResult.analysis?.qurgochlik}
                       </span>
                     </div>
                     <div className="h-2 w-full bg-white/5 rounded-full relative overflow-hidden">
                       <div
                         className="absolute h-full bg-orange-500 rounded-full transition-all"
                         style={{
-                          width: `${Math.max(0, Math.min(100, (analysisResult.drought_index / 1) * 100))}%`,
+                          width: "30%",
+                          left: `${Math.max(0, Math.min(100, (analysisResult.ndvi?.drought_index + 1) * 50))}%`,
                         }}
                       />
                     </div>
@@ -568,6 +573,236 @@ export function FieldPage() {
                   Xaritada hudud belgilang va haqiqiy sun'iy yo'ldosh
                   ma'lumotlarini oling
                 </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {analysisTab === "Tuproq" && (
+          <div className="px-6 pb-8">
+            {analysisResult?.soil ? (
+              <div className="flex flex-col gap-6">
+                <div className="bg-[#1e293b] rounded-2xl p-5 border border-white/5">
+                  <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-4">
+                    Tuproq xususiyatlari
+                  </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-white/40">pH darajasi</span>
+                      <span className="text-lg font-bold text-blue-400">{analysisResult.soil.properties?.ph_h2o?.toFixed(1)}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-white/40">Organik uglerod</span>
+                      <span className="text-lg font-bold text-green-400">{analysisResult.soil.properties?.soc?.toFixed(1)} g/kg</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-white/40">Azot miqdori</span>
+                      <span className="text-lg font-bold text-purple-400">{analysisResult.soil.properties?.nitrogen} mg/kg</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-white/40">Zichlik (BDOD)</span>
+                      <span className="text-lg font-bold text-orange-400">{analysisResult.soil.properties?.bdod} kg/m³</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-[#1e293b] rounded-2xl p-5 border border-white/5">
+                  <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-4">
+                    Tarkibi (%)
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-white/60">Qum (Sand)</span>
+                      <span className="font-bold">{analysisResult.soil.properties?.sand}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                      <div className="h-full bg-yellow-500" style={{ width: `${analysisResult.soil.properties?.sand}%` }} />
+                    </div>
+                    <div className="flex justify-between text-xs mt-2">
+                      <span className="text-white/60">Loy (Clay)</span>
+                      <span className="font-bold">{analysisResult.soil.properties?.clay}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                      <div className="h-full bg-red-500" style={{ width: `${analysisResult.soil.properties?.clay}%` }} />
+                    </div>
+                    <div className="flex justify-between text-xs mt-2">
+                      <span className="text-white/60">Silt</span>
+                      <span className="font-bold">{analysisResult.soil.properties?.silt}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                      <div className="h-full bg-blue-500" style={{ width: `${analysisResult.soil.properties?.silt}%` }} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-[#1e293b] rounded-xl p-4 border border-white/5 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center">
+                      <Thermometer className="w-4 h-4 text-orange-500" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-white/40">Yuza temp.</p>
+                      <p className="text-sm font-bold">{analysisResult.soil.surface_temp}°C</p>
+                    </div>
+                  </div>
+                  <div className="bg-[#1e293b] rounded-xl p-4 border border-white/5 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                      <Droplets className="w-4 h-4 text-blue-500" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-white/40">Namlik (0-1cm)</p>
+                      <p className="text-sm font-bold">{analysisResult.soil.moisture_0_1cm}%</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 text-center opacity-40">
+                <Map className="w-8 h-8 mb-4" />
+                <p className="text-xs font-medium">Ma'lumotlar yuklanmoqda...</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {analysisTab === "Ob-havo" && (
+          <div className="px-6 pb-8">
+            {analysisResult?.weather ? (
+              <div className="flex flex-col gap-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-[#1e293b] rounded-2xl p-5 border border-white/5 text-center">
+                    <Thermometer className="w-6 h-6 text-orange-500 mx-auto mb-2" />
+                    <p className="text-[10px] text-white/40 uppercase">O'rtacha harorat</p>
+                    <p className="text-2xl font-black">{analysisResult.weather.avg_temp}°C</p>
+                  </div>
+                  <div className="bg-[#1e293b] rounded-2xl p-5 border border-white/5 text-center">
+                    <CloudRain className="w-6 h-6 text-blue-500 mx-auto mb-2" />
+                    <p className="text-[10px] text-white/40 uppercase">Yillik yog'in</p>
+                    <p className="text-2xl font-black">{analysisResult.weather.annual_precip} mm</p>
+                  </div>
+                  <div className="bg-[#1e293b] rounded-2xl p-5 border border-white/5 text-center">
+                    <Wind className="w-6 h-6 text-teal-400 mx-auto mb-2" />
+                    <p className="text-[10px] text-white/40 uppercase">Shamol tezligi</p>
+                    <p className="text-2xl font-black">{analysisResult.weather.avg_wind} m/s</p>
+                  </div>
+                  <div className="bg-[#1e293b] rounded-2xl p-5 border border-white/5 text-center">
+                    <Droplets className="w-6 h-6 text-blue-400 mx-auto mb-2" />
+                    <p className="text-[10px] text-white/40 uppercase">Namlik</p>
+                    <p className="text-2xl font-black">{analysisResult.weather.avg_humidity}%</p>
+                  </div>
+                </div>
+
+                <div className="bg-[#1e293b] rounded-2xl p-5 border border-white/5">
+                  <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-4">
+                    Yog'ingarchilik trendi (Monthly)
+                  </p>
+                  <div className="h-48 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={analysisResult.weather.monthly}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                        <XAxis dataKey="month" fontSize={10} stroke="rgba(255,255,255,0.3)" tickFormatter={(v) => v.split("-")[1]} />
+                        <YAxis fontSize={10} stroke="rgba(255,255,255,0.3)" />
+                        <Tooltip contentStyle={{ backgroundColor: "#1e293b", border: "none", borderRadius: "8px", fontSize: "10px" }} />
+                        <Line type="monotone" dataKey="precip" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3, fill: "#3b82f6" }} />
+                        <Line type="monotone" dataKey="temp" stroke="#f97316" strokeWidth={2} dot={{ r: 3, fill: "#f97316" }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 text-center opacity-40">
+                <Map className="w-8 h-8 mb-4" />
+                <p className="text-xs font-medium">Ma'lumotlar yuklanmoqda...</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {analysisTab === "AI Tahlil" && (
+          <div className="px-6 pb-8">
+            {analysisResult?.analysis ? (
+              <div className="flex flex-col gap-6">
+                {/* Summary Banner */}
+                <div className="bg-gradient-to-br from-green-600/20 to-blue-600/20 rounded-2xl p-6 border border-white/10">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-xl bg-green-500/20 flex items-center justify-center">
+                      <Zap className="w-6 h-6 text-green-500" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg">AI Xulosa</h3>
+                      <p className="text-[10px] text-white/40 uppercase tracking-widest">{analysisResult.source}</p>
+                    </div>
+                  </div>
+                  <p className="text-sm leading-relaxed text-white/80 italic">
+                    "{analysisResult.analysis.xulosa}"
+                  </p>
+                </div>
+
+                {/* Status Sections */}
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="bg-[#1e293b] rounded-xl p-4 border border-white/5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Sprout className="w-4 h-4 text-green-500" />
+                      <span className="text-xs font-bold uppercase tracking-wider">O'simlik holati</span>
+                    </div>
+                    <p className="text-xs text-white/60 leading-relaxed">{analysisResult.analysis.osimlik_holati}</p>
+                  </div>
+                  <div className="bg-[#1e293b] rounded-xl p-4 border border-white/5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Map className="w-4 h-4 text-orange-500" />
+                      <span className="text-xs font-bold uppercase tracking-wider">Tuproq tahlili</span>
+                    </div>
+                    <p className="text-xs text-white/60 leading-relaxed">{analysisResult.analysis.tuproq_tahlili}</p>
+                  </div>
+                </div>
+
+                {/* Priority Actions */}
+                <div>
+                  <h4 className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-3 px-1">Ustuvor harakatlar</h4>
+                  <div className="flex flex-col gap-2">
+                    {analysisResult.analysis.ustuvor_harakatlar?.map((item: string, i: number) => (
+                      <div key={i} className="bg-white/5 rounded-xl p-3 flex items-start gap-3 border border-white/5">
+                        <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center text-[10px] font-bold text-blue-500 flex-shrink-0 mt-0.5">{i + 1}</div>
+                        <p className="text-xs text-white/80">{item}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Risks */}
+                <div>
+                  <h4 className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-3 px-1">Mumkin bo'lgan xavflar</h4>
+                  <div className="flex flex-col gap-2">
+                    {analysisResult.analysis.xavflar?.map((item: string, i: number) => (
+                      <div key={i} className="bg-red-500/5 rounded-xl p-3 flex items-start gap-3 border border-red-500/10">
+                        <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-white/80">{item}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Recommendations */}
+                <div className="bg-[#1e293b] rounded-2xl p-5 border border-white/5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Lightbulb className="w-4 h-4 text-yellow-500" />
+                    <span className="text-xs font-bold uppercase tracking-wider">Dehqonchilik maslahatlari</span>
+                  </div>
+                  <ul className="space-y-3">
+                    {analysisResult.analysis.dehqonchilik_maslahati?.map((item: string, i: number) => (
+                      <li key={i} className="text-xs text-white/60 flex gap-2">
+                        <span className="text-yellow-500 mt-1">•</span>
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 text-center opacity-40">
+                <Map className="w-8 h-8 mb-4" />
+                <p className="text-xs font-medium">Tahlil o'tkazilmagan</p>
               </div>
             )}
           </div>

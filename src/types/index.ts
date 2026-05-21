@@ -46,3 +46,19 @@ export interface SavedField {
   area: { m2: number; sotix: number; hectare: number };
   createdAt: string;
 }
+
+export interface AnalysisResult {
+  risk_level: RiskLevel;
+  ndvi_current: number;
+  ndvi_change: number;
+  ndvi_label: string;
+  drought_index: number;
+  area_ha: number;
+  soil_moisture: string;
+  confidence: string;
+  problem: string;
+  status_text: string;
+  recommendations: string[];
+  temperature?: number;
+  weather_forecast?: string;
+}
