@@ -5,16 +5,15 @@ import {
   Trash2,
   ChevronRight,
   ChevronDown,
-  Pencil,
   Map,
   CheckCircle2,
   Sprout,
-  LayoutList,
   X,
   Calendar,
   Download,
   Save,
   FileJson,
+  Loader2,
 } from "lucide-react";
 import {
   MapboxFieldMap,
@@ -64,7 +63,7 @@ function NameDialog({ defaultName, onConfirm, onCancel }: NameDialogProps) {
   const [name, setName] = useState(defaultName);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+      <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-sm:max-w-xs">
         <h3 className="font-bold text-lg text-foreground mb-1">
           Dala nomini kiriting
         </h3>
@@ -131,6 +130,19 @@ export function FieldPage() {
   const [history, setHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
+  // Analysis panel state
+  const [analysisTab, setAnalysisTab] = useState("NDVI");
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // Form state (for selected field)
+  const [crop, setCrop] = useState("Pomidor");
+
+  // Panel view on mobile: 'map' | 'list'
+  const [mobileView, setMobileView] = useState<"map" | "list">("map");
+
+  const activeField = savedFields.find((f) => f.id === activeFieldId) ?? null;
+
   useEffect(() => {
     fetchHistory();
   }, []);
@@ -147,21 +159,6 @@ export function FieldPage() {
       setLoadingHistory(false);
     }
   };
-
-  // Analysis panel state
-  const [analysisTab, setAnalysisTab] = useState("NDVI");
-  const [analysisResult, setAnalysisResult] = useState<any>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-
-  // Form state (for selected field)
-  const [crop, setCrop] = useState("Pomidor");
-  const [lastIrrigation, setLastIrrigation] = useState("");
-  const [waterCycle, setWaterCycle] = useState("7");
-
-  // Panel view on mobile: 'map' | 'list'
-  const [mobileView, setMobileView] = useState<"map" | "list">("map");
-
-  const activeField = savedFields.find((f) => f.id === activeFieldId) ?? null;
 
   const handlePolygonChange = useCallback(
     (geojson: GeoJSON.Feature<GeoJSON.Polygon> | null) => {
@@ -211,6 +208,20 @@ export function FieldPage() {
     if (activeFieldId === id) setActiveFieldId(updated[0]?.id ?? null);
   };
 
+  const handleDeleteHistory = async (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    if (!confirm("Haqiqatan ham ushbu tahlilni o'chirmoqchimisiz?")) return;
+    try {
+      await fetch(`http://localhost:8000/api/satellite/history/${id}/`, {
+        method: "DELETE",
+      });
+      fetchHistory();
+      if (analysisResult?.id === id) setAnalysisResult(null);
+    } catch (err) {
+      console.error("Failed to delete history:", err);
+    }
+  };
+
   const handleFieldClick = useCallback(
     (id: string) => {
       setActiveFieldId(id);
@@ -218,28 +229,6 @@ export function FieldPage() {
     },
     [isMobile],
   );
-
-  const handleNext = () => {
-    if (!activeField) {
-      alert("Avval dala tanlang yoki yangi dala chizing.");
-      return;
-    }
-    const fieldData: FieldData = {
-      points: activeField.polygon.geometry.coordinates[0].map(([lng, lat]) => ({
-        lat,
-        lng,
-      })),
-      crop: activeField.crop,
-      name: activeField.name,
-      area_ha: activeField.area.hectare,
-      lastIrrigation,
-      waterCycle,
-    };
-    sessionStorage.setItem("fieldData", JSON.stringify(fieldData));
-    navigate(ROUTES.LOADING);
-  };
-
-  const handleFitFields = () => mapboxRef.current?.fitToFields();
 
   const handleStartAnalysis = async () => {
     if (!activeField) return;
@@ -268,6 +257,24 @@ export function FieldPage() {
     }
   };
 
+  const handleNext = () => {
+    if (!activeField) {
+      alert("Avval dala tanlang yoki yangi dala chizing.");
+      return;
+    }
+    const fieldData: FieldData = {
+      points: activeField.polygon.geometry.coordinates[0].map(([lng, lat]) => ({
+        lat,
+        lng,
+      })),
+      crop: activeField.crop,
+      name: activeField.name,
+      area_ha: activeField.area.hectare,
+    };
+    sessionStorage.setItem("fieldData", JSON.stringify(fieldData));
+    navigate(ROUTES.LOADING);
+  };
+
   // ── History Sidebar ────────────────────────────────────────────────────────
   const historySidebar = (
     <div className="w-72 flex-shrink-0 bg-[#0f172a] text-white flex flex-col h-full border-r border-white/10">
@@ -286,40 +293,50 @@ export function FieldPage() {
         </button>
       </div>
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
-        {history.map((item) => (
-          <div
-            key={item.id}
-            className="bg-[#1e293b] rounded-xl p-3 border border-white/5 hover:border-blue-500/50 transition-all cursor-pointer group"
-          >
-            <div className="flex items-start justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span className="bg-orange-500/20 text-orange-500 text-[10px] font-bold px-1.5 py-0.5 rounded border border-orange-500/30">
-                  {item.ndvi_current?.toFixed(2) || "0.00"}
-                </span>
-                <span className="font-bold text-xs truncate max-w-[100px]">
-                  {item.name}
-                </span>
+        {loadingHistory ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+          </div>
+        ) : (
+          history.map((item) => (
+            <div
+              key={item.id}
+              onClick={() => setAnalysisResult(item)}
+              className={`bg-[#1e293b] rounded-xl p-3 border ${analysisResult?.id === item.id ? "border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.3)]" : "border-white/5"} hover:border-blue-500/50 transition-all cursor-pointer group`}
+            >
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="bg-orange-500/20 text-orange-500 text-[10px] font-bold px-1.5 py-0.5 rounded border border-orange-500/30">
+                    {item.ndvi_current?.toFixed(2) || "0.00"}
+                  </span>
+                  <span className="font-bold text-xs truncate max-w-[100px]">
+                    {item.name}
+                  </span>
+                </div>
+              </div>
+              <div className="text-[10px] text-white/40 mb-3 font-mono">
+                {item.center_lat.toFixed(4)}, {item.center_lng.toFixed(4)} •{" "}
+                {item.area_ha.toFixed(1)} ha
+              </div>
+              <div className="flex items-center gap-2 text-[10px] text-white/60 mb-3">
+                <Calendar className="w-3 h-3" />
+                {new Date(item.created_at).toLocaleDateString()} • DI{" "}
+                {item.drought_index?.toFixed(2) || "0.00"}
+              </div>
+              <div className="flex gap-2">
+                <button className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors">
+                  <Download className="w-3 h-3" /> Yuklash
+                </button>
+                <button
+                  onClick={(e) => handleDeleteHistory(e, item.id)}
+                  className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors"
+                >
+                  <X className="w-3 h-3" /> O'chirish
+                </button>
               </div>
             </div>
-            <div className="text-[10px] text-white/40 mb-3">
-              {item.center_lat.toFixed(4)}, {item.center_lng.toFixed(4)} •{" "}
-              {item.area_ha.toFixed(1)} ha
-            </div>
-            <div className="flex items-center gap-2 text-[10px] text-white/60 mb-3">
-              <Calendar className="w-3 h-3" />
-              {new Date(item.created_at).toLocaleDateString()} • DI{" "}
-              {item.drought_index?.toFixed(2) || "0.00"}
-            </div>
-            <div className="flex gap-2">
-              <button className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors">
-                <Download className="w-3 h-3" /> Yuklash
-              </button>
-              <button className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors">
-                <X className="w-3 h-3" /> O'chirish
-              </button>
-            </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );
@@ -339,7 +356,10 @@ export function FieldPage() {
           <button className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors">
             <FileJson className="w-4 h-4" />
           </button>
-          <button className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors">
+          <button
+            onClick={() => setAnalysisResult(null)}
+            className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -369,7 +389,11 @@ export function FieldPage() {
             </span>
             <span className="text-white/40 font-medium mx-1">•</span>
             <span className="text-white/40 font-medium">
-              {(activeField?.area?.m2 ? activeField.area.m2 / 1000000 : 0).toFixed(4)} km²
+              {(activeField?.area?.m2
+                ? activeField.area.m2 / 1000000
+                : 0
+              ).toFixed(4)}{" "}
+              km²
             </span>
           </div>
         </div>
@@ -378,11 +402,13 @@ export function FieldPage() {
         <div className="px-4 mb-6">
           <button
             onClick={handleStartAnalysis}
-            disabled={isAnalyzing}
+            disabled={isAnalyzing || !activeField}
             className="w-full py-4 rounded-xl bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-500 hover:to-blue-500 text-sm font-bold flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
           >
             {isAnalyzing ? (
-              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : analysisResult ? (
+              "🔄 Qayta tahlil qilish"
             ) : (
               "🛰️ Haqiqiy ma'lumotlarni tahlil qilish"
             )}
@@ -419,7 +445,8 @@ export function FieldPage() {
                   </p>
                   <div className="flex items-center justify-center gap-3">
                     <div className="bg-green-500/20 text-green-500 text-[10px] font-bold px-3 py-1 rounded-full border border-green-500/30 flex items-center gap-1">
-                      ↑ +0.058 (1 yil)
+                      ↑ +{analysisResult.ndvi_change?.toFixed(3) || "0.058"} (1
+                      yil)
                     </div>
                     <div className="bg-white/5 text-white/60 text-[10px] font-bold px-3 py-1 rounded-full border border-white/10">
                       2026-05
@@ -431,9 +458,9 @@ export function FieldPage() {
                 <div className="mb-8">
                   <div className="h-2 w-full rounded-full bg-gradient-to-r from-red-500 via-orange-400 via-yellow-300 via-green-400 to-green-700 relative">
                     <div
-                      className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-4 border-blue-500 rounded-full shadow-lg"
+                      className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-4 border-blue-500 rounded-full shadow-lg transition-all"
                       style={{
-                        left: `${((analysisResult.ndvi_current + 0.1) / 1.1) * 100}%`,
+                        left: `${Math.max(0, Math.min(100, ((analysisResult.ndvi_current + 0.1) / 1.1) * 100))}%`,
                       }}
                     />
                   </div>
@@ -469,7 +496,7 @@ export function FieldPage() {
                           { name: "02", ndvi: 0.18 },
                           { name: "03", ndvi: 0.32 },
                           { name: "04", ndvi: 0.48 },
-                          { name: "05", ndvi: 0.62 },
+                          { name: "05", ndvi: analysisResult.ndvi_current },
                         ]}
                       >
                         <CartesianGrid
@@ -518,15 +545,14 @@ export function FieldPage() {
                       </span>
                       <span className="text-xs font-bold text-orange-400">
                         {analysisResult.drought_index?.toFixed(2) || "0.00"}{" "}
-                        Biroz nam
+                        {analysisResult.drought_index > 0.5 ? "Nam" : "Biroz quruq"}
                       </span>
                     </div>
                     <div className="h-2 w-full bg-white/5 rounded-full relative overflow-hidden">
                       <div
-                        className="absolute h-full bg-orange-500 rounded-full"
+                        className="absolute h-full bg-orange-500 rounded-full transition-all"
                         style={{
-                          width: `${(analysisResult.drought_index / 1) * 100}%`,
-                          left: "40%",
+                          width: `${Math.max(0, Math.min(100, (analysisResult.drought_index / 1) * 100))}%`,
                         }}
                       />
                     </div>
@@ -549,6 +575,7 @@ export function FieldPage() {
       </div>
     </div>
   );
+
   const fieldsList = (
     <div className="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0">
       {savedFields.length === 0 ? (
@@ -559,9 +586,6 @@ export function FieldPage() {
           <p className="text-sm font-semibold text-muted-foreground">
             Hali dala belgilanmagan
           </p>
-          <p className="text-xs text-muted-foreground">
-            Xaritada maydon chizing va saqlang
-          </p>
         </div>
       ) : (
         savedFields.map((f) => {
@@ -569,7 +593,7 @@ export function FieldPage() {
           return (
             <div
               key={f.id}
-              onClick={() => setActiveFieldId(f.id)}
+              onClick={() => handleFieldClick(f.id)}
               className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all border ${isActive ? "bg-green-50 border-green-300" : "bg-white border-border hover:bg-gray-50"}`}
             >
               <div
@@ -589,9 +613,6 @@ export function FieldPage() {
                   {f.crop} • {f.area.sotix} sotix
                 </p>
               </div>
-              {isActive && (
-                <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-              )}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -608,7 +629,6 @@ export function FieldPage() {
     </div>
   );
 
-  // ── Form panel ─────────────────────────────────────────────────────────────
   const formPanel = (
     <div className="flex flex-col gap-3">
       {activeField ? (
@@ -642,43 +662,12 @@ export function FieldPage() {
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm font-semibold text-foreground mb-1.5 block">
-                So'nggi sug'orish
-              </label>
-              <input
-                type="date"
-                value={lastIrrigation}
-                onChange={(e) => setLastIrrigation(e.target.value)}
-                className="w-full bg-input-background border border-border rounded-xl px-3 py-3 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-semibold text-foreground mb-1.5 block">
-                Davr (kun)
-              </label>
-              <input
-                type="number"
-                value={waterCycle}
-                onChange={(e) => setWaterCycle(e.target.value)}
-                min={1}
-                max={30}
-                className="w-full bg-input-background border border-border rounded-xl px-3 py-3 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-          </div>
-    <div className="flex flex-col gap-3">
-      <button
-        onClick={handleNext}
-        className="w-full bg-primary text-primary-foreground font-bold py-4 rounded-2xl shadow-lg hover:bg-green-700 active:scale-95 transition-all flex items-center justify-center gap-2 text-base mt-1"
-      >
-        Tahlilni boshlash <ChevronRight className="w-5 h-5" />
-      </button>
-      <p className="text-[10px] text-center text-muted-foreground px-4">
-        Ma'lumotlar sun'iy yo'ldosh va AI orqali tahlil qilinadi
-      </p>
-    </div>
+          <button
+            onClick={handleNext}
+            className="w-full bg-primary text-primary-foreground font-bold py-4 rounded-2xl shadow-lg hover:bg-green-700 active:scale-95 transition-all flex items-center justify-center gap-2 text-base mt-1"
+          >
+            Tahlilni boshlash <ChevronRight className="w-5 h-5" />
+          </button>
         </>
       ) : (
         <div className="text-center py-6 text-sm text-muted-foreground">
@@ -688,7 +677,6 @@ export function FieldPage() {
     </div>
   );
 
-  // ── Map action bar ─────────────────────────────────────────────────────────
   const mapActions = (
     <div className="flex gap-2">
       <button
@@ -697,30 +685,12 @@ export function FieldPage() {
       >
         <Plus className="w-4 h-4" /> Yangi dala chizish
       </button>
-      {draftPolygon && draftArea.m2 >= 100 && (
+      {draftPolygon && (
         <button
           onClick={handleSaveDraft}
           className="flex-1 py-3 rounded-xl font-semibold text-sm bg-green-600 text-white hover:bg-green-700 transition-all flex items-center justify-center gap-2 shadow-sm"
         >
           <CheckCircle2 className="w-4 h-4" /> Saqlash
-        </button>
-      )}
-      {draftPolygon && (
-        <button
-          onClick={() => mapboxRef.current?.clearActive()}
-          className="p-3 rounded-xl bg-red-100 text-red-600 hover:bg-red-200 transition-colors shadow-sm"
-          title="Bekor qilish"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      )}
-      {savedFields.length > 0 && !draftPolygon && (
-        <button
-          onClick={handleFitFields}
-          className="p-3 rounded-xl bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors shadow-sm"
-          title="Barcha dalalarni ko'rsatish"
-        >
-          <Pencil className="w-5 h-5" />
         </button>
       )}
     </div>
@@ -740,61 +710,46 @@ export function FieldPage() {
             }}
           />
         )}
-        <div className="flex flex-col h-screen overflow-hidden">
-          <div className="flex-shrink-0 px-8 pt-6 pb-4">
-            <h2 className="text-2xl font-bold text-foreground">
-              Dala Xaritasi
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Maydonlarni belgilang, nomlang va tahlilga yuboring
-            </p>
-          </div>
-          <div className="flex-1 flex gap-5 px-8 pb-8 overflow-hidden">
-            {/* Map */}
-            <div className="flex-1 flex flex-col gap-3 min-w-0">
-              <div className="relative flex-1 rounded-2xl overflow-hidden shadow-lg border border-border">
-                <MapboxFieldMap
-                  ref={mapboxRef}
-                  savedFields={savedFields}
-                  activeFieldId={activeFieldId}
-                  onPolygonChange={handlePolygonChange}
-                  onAreaChange={handleAreaChange}
-                  onFieldClick={handleFieldClick}
-                />
-              </div>
-              {mapActions}
-              {draftPolygon && draftArea.m2 > 0 && (
+        <div className="flex h-screen overflow-hidden bg-[#0f172a]">
+          {historySidebar}
+          <div className="flex-1 flex flex-col min-w-0 relative">
+            <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
+              <button
+                onClick={() => mapboxRef.current?.startDrawing()}
+                className="bg-white/10 backdrop-blur-md border border-white/10 p-3 rounded-xl text-white hover:bg-white/20 transition-all shadow-xl"
+                title="Yangi dala chizish"
+              >
+                <Plus className="w-5 h-5" />
+              </button>
+              {draftPolygon && (
+                <button
+                  onClick={handleSaveDraft}
+                  className="bg-green-600 border border-green-500 p-3 rounded-xl text-white hover:bg-green-500 transition-all shadow-xl"
+                  title="Saqlash"
+                >
+                  <CheckCircle2 className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+            <MapboxFieldMap
+              ref={mapboxRef}
+              savedFields={savedFields}
+              activeFieldId={activeFieldId}
+              onPolygonChange={handlePolygonChange}
+              onAreaChange={handleAreaChange}
+              onFieldClick={handleFieldClick}
+            />
+            {draftPolygon && draftArea.m2 > 0 && (
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10">
                 <AreaDisplay
                   m2={draftArea.m2}
                   sotix={draftArea.sotix}
                   hectare={draftArea.hectare}
                 />
-              )}
-            </div>
-
-            {/* Sidebar */}
-            <div className="w-80 flex-shrink-0 flex flex-col gap-4 overflow-hidden">
-              {/* Fields list */}
-              <div className="bg-white rounded-2xl border border-border shadow-sm p-4 flex flex-col gap-3 flex-1 min-h-0 overflow-hidden">
-                <div className="flex items-center justify-between flex-shrink-0">
-                  <h3 className="font-bold text-foreground">
-                    Mening dalalarim
-                  </h3>
-                  <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                    {savedFields.length} ta
-                  </span>
-                </div>
-                {fieldsList}
               </div>
-              {/* Form */}
-              <div className="bg-white rounded-2xl border border-border shadow-sm p-4 flex-shrink-0">
-                <h3 className="font-bold text-foreground mb-3">
-                  Tahlil ma'lumotlari
-                </h3>
-                {formPanel}
-              </div>
-            </div>
+            )}
           </div>
+          {analysisPanel}
         </div>
       </>
     );
@@ -814,36 +769,28 @@ export function FieldPage() {
         />
       )}
       <div className="flex flex-col h-full overflow-hidden">
-        {/* Header with tab toggle */}
         <div className="flex-shrink-0 px-5 pt-5 pb-3 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-foreground">Dala Xaritasi</h2>
-            <p className="text-xs text-muted-foreground">
-              {savedFields.length} ta dala saqlangan
-            </p>
           </div>
           <div className="flex bg-gray-100 rounded-xl p-0.5 gap-0.5">
             <button
               onClick={() => setMobileView("map")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 ${mobileView === "map" ? "bg-white text-green-700 shadow" : "text-gray-500"}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${mobileView === "map" ? "bg-white text-green-700 shadow" : "text-gray-500"}`}
             >
-              <Map className="w-3.5 h-3.5" /> Xarita
+              Xarita
             </button>
             <button
               onClick={() => setMobileView("list")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 ${mobileView === "list" ? "bg-white text-green-700 shadow" : "text-gray-500"}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${mobileView === "list" ? "bg-white text-green-700 shadow" : "text-gray-500"}`}
             >
-              <LayoutList className="w-3.5 h-3.5" /> Dalalar
+              Dalalar
             </button>
           </div>
         </div>
-
         {mobileView === "map" ? (
           <>
-            <div
-              className="relative mx-4 rounded-2xl overflow-hidden shadow-lg border border-border flex-1 min-h-0"
-              style={{ minHeight: 240 }}
-            >
+            <div className="relative mx-4 rounded-2xl overflow-hidden shadow-lg border border-border flex-1 min-h-0">
               <MapboxFieldMap
                 ref={mapboxRef}
                 savedFields={savedFields}
@@ -854,20 +801,11 @@ export function FieldPage() {
               />
             </div>
             <div className="flex-shrink-0 px-4 mt-3">{mapActions}</div>
-            {draftPolygon && draftArea.m2 > 0 && (
-              <div className="flex-shrink-0 mx-4 mt-2">
-                <AreaDisplay
-                  m2={draftArea.m2}
-                  sotix={draftArea.sotix}
-                  hectare={draftArea.hectare}
-                />
-              </div>
-            )}
           </>
         ) : (
-          <div className="flex-1 flex flex-col gap-3 px-4 overflow-hidden min-h-0">
-            <div className="flex-1 overflow-y-auto min-h-0">{fieldsList}</div>
-            <div className="flex-shrink-0 pb-4">{formPanel}</div>
+          <div className="flex-1 flex flex-col gap-3 px-4 overflow-hidden min-h-0 pb-4">
+            <div className="flex-1 overflow-y-auto">{fieldsList}</div>
+            {formPanel}
           </div>
         )}
       </div>
