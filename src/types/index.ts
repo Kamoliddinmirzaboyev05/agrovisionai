@@ -1,5 +1,5 @@
-export type RiskLevel = 'low' | 'medium' | 'high';
-export type NavTab = 'home' | 'field' | 'results' | 'profile';
+export type RiskLevel = "low" | "medium" | "high";
+export type NavTab = "home" | "field" | "results" | "profile";
 
 export interface LatLng {
   lat: number;
@@ -34,4 +34,13 @@ export interface FieldData {
   crop: string;
   lastIrrigation?: string;
   waterCycle?: string;
+}
+
+export interface SavedField {
+  id: string;
+  name: string;
+  crop: string;
+  polygon: GeoJSON.Feature<GeoJSON.Polygon>;
+  area: { m2: number; sotix: number; hectare: number };
+  createdAt: string;
 }
