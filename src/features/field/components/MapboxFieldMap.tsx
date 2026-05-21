@@ -9,14 +9,7 @@ import {
 import mapboxgl from "mapbox-gl";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import { area } from "@turf/area";
-import {
-  Navigation,
-  Layers,
-  Pencil,
-  Undo2,
-  CheckCircle2,
-  AlertCircle,
-} from "lucide-react";
+import { Layers, Pencil, Undo2, CheckCircle2, AlertCircle } from "lucide-react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import type { SavedField } from "@/types";
@@ -57,7 +50,6 @@ export const MapboxFieldMap = forwardRef<
     const mapContainer = useRef<HTMLDivElement>(null);
     const map = useRef<mapboxgl.Map | null>(null);
     const draw = useRef<MapboxDraw | null>(null);
-    const userLocationMarker = useRef<mapboxgl.Marker | null>(null);
     const fieldMarkersRef = useRef<mapboxgl.Marker[]>([]);
     const historyRef = useRef<GeoJSON.Position[][]>([]);
 
@@ -72,10 +64,6 @@ export const MapboxFieldMap = forwardRef<
     const [hasActive, setHasActive] = useState(false);
     const [vertexCount, setVertexCount] = useState(0);
     const [mapReady, setMapReady] = useState(false);
-
-    const clearLocationStatus = useCallback((delay = 3500) => {
-      setTimeout(() => setLocationStatus({ type: null, message: "" }), delay);
-    }, []);
 
     const computeArea = useCallback(
       (feature: GeoJSON.Feature<GeoJSON.Polygon>) => {
@@ -155,6 +143,41 @@ export const MapboxFieldMap = forwardRef<
         "bottom-right",
       );
       mapInstance.addControl(new mapboxgl.FullscreenControl(), "top-right");
+
+      // ── GeolocateControl — most reliable cross-platform location ──
+      const geolocate = new mapboxgl.GeolocateControl({
+        positionOptions: {
+          enableHighAccuracy: true,
+          timeout: 10000,
+        },
+        trackUserLocation: false,
+        showUserHeading: false,
+        showAccuracyCircle: true,
+        fitBoundsOptions: { zoom: 17, duration: 2000 },
+      });
+
+      mapInstance.addControl(geolocate, "top-right");
+
+      geolocate.on("geolocate", () => {
+        setLocationStatus({
+          type: "success",
+          message: "Joylashuvingiz aniqlandi",
+        });
+        setTimeout(() => setLocationStatus({ type: null, message: "" }), 3000);
+      });
+
+      geolocate.on("error", (e: { code: number; message: string }) => {
+        const msgs: Record<number, string> = {
+          1: "Joylashuvga ruxsat berilmadi. Brauzer sozlamalarini tekshiring.",
+          2: "Joylashuvni aniqlab bo'lmadi. Internet yoki GPS ni tekshiring.",
+          3: "Vaqt tugadi. Qayta urinib ko'ring.",
+        };
+        setLocationStatus({
+          type: "error",
+          message: msgs[e.code] ?? "Joylashuvni aniqlab bo'lmadi",
+        });
+        setTimeout(() => setLocationStatus({ type: null, message: "" }), 5000);
+      });
 
       const drawInstance = new MapboxDraw({
         displayControlsDefault: false,
@@ -508,80 +531,6 @@ export const MapboxFieldMap = forwardRef<
       setVertexCount(0);
     }, []);
 
-    // ── Geolocation ──
-    const handleLocate = useCallback(() => {
-      if (!navigator.geolocation) {
-        setLocationStatus({
-          type: "error",
-          message: "Brauzer joylashuvni qo'llab-quvvatlamaydi",
-        });
-        clearLocationStatus(4000);
-        return;
-      }
-      setLocationStatus({
-        type: "loading",
-        message: "Joylashuv aniqlanmoqda...",
-      });
-
-      const flyTo = (lng: number, lat: number) => {
-        userLocationMarker.current?.remove();
-        const el = document.createElement("div");
-        el.style.cssText = `width:18px;height:18px;background:#3b82f6;border:3px solid white;border-radius:50%;box-shadow:0 0 0 6px rgba(59,130,246,0.2),0 2px 8px rgba(0,0,0,0.3);`;
-        userLocationMarker.current = new mapboxgl.Marker(el)
-          .setLngLat([lng, lat])
-          .addTo(map.current!);
-        map.current?.flyTo({
-          center: [lng, lat],
-          zoom: 17,
-          duration: 2000,
-          essential: true,
-        });
-        setLocationStatus({
-          type: "success",
-          message: "Joylashuvingiz aniqlandi",
-        });
-        clearLocationStatus(3000);
-      };
-
-      const onErr = (err: GeolocationPositionError, isRetry: boolean) => {
-        if (err.code === err.POSITION_UNAVAILABLE && !isRetry) {
-          navigator.geolocation.getCurrentPosition(
-            ({ coords }) => flyTo(coords.longitude, coords.latitude),
-            (e2) => {
-              const msgs: Record<number, string> = {
-                1: "Joylashuvga ruxsat berilmadi. Brauzer sozlamalarini tekshiring.",
-                2: "Joylashuvni aniqlab bo'lmadi. Internet yoki GPS ni tekshiring.",
-                3: "Vaqt tugadi. Qayta urinib ko'ring.",
-              };
-              setLocationStatus({
-                type: "error",
-                message: msgs[e2.code] ?? "Joylashuvni aniqlab bo'lmadi",
-              });
-              clearLocationStatus(5000);
-            },
-            { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 },
-          );
-          return;
-        }
-        const msgs: Record<number, string> = {
-          1: "Joylashuvga ruxsat berilmadi. Brauzer sozlamalarini tekshiring.",
-          2: "Joylashuvni aniqlab bo'lmadi. Internet yoki GPS ni tekshiring.",
-          3: "Vaqt tugadi. Qayta urinib ko'ring.",
-        };
-        setLocationStatus({
-          type: "error",
-          message: msgs[err.code] ?? "Joylashuvni aniqlab bo'lmadi",
-        });
-        clearLocationStatus(5000);
-      };
-
-      navigator.geolocation.getCurrentPosition(
-        ({ coords }) => flyTo(coords.longitude, coords.latitude),
-        (err) => onErr(err, false),
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
-      );
-    }, [clearLocationStatus]);
-
     const isDrawingMode = drawMode === "drawing";
     const isEditingMode = drawMode === "editing";
     const canUndo = historyRef.current.length >= 2;
@@ -603,21 +552,6 @@ export const MapboxFieldMap = forwardRef<
             </button>
           ))}
         </div>
-
-        {/* Locate button */}
-        <button
-          onClick={handleLocate}
-          disabled={locationStatus.type === "loading"}
-          className={`absolute top-[108px] right-3 z-10 bg-white rounded-xl shadow-lg px-3 py-2.5 border border-gray-200 flex items-center gap-2 transition-all ${locationStatus.type === "loading" ? "opacity-50 cursor-not-allowed" : "hover:bg-green-50 active:scale-95"}`}
-          title="Joylashuvimni topish"
-        >
-          <Navigation
-            className={`w-4 h-4 text-green-700 ${locationStatus.type === "loading" ? "animate-pulse" : ""}`}
-          />
-          <span className="text-xs font-semibold text-green-700 hidden sm:inline">
-            Joylashuvim
-          </span>
-        </button>
 
         {/* Drawing toolbar */}
         {isDrawingMode && (
