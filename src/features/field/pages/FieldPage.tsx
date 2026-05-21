@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "react-router";
 import {
   Plus,
@@ -11,6 +11,10 @@ import {
   Sprout,
   LayoutList,
   X,
+  Calendar,
+  Download,
+  Save,
+  FileJson,
 } from "lucide-react";
 import {
   MapboxFieldMap,
@@ -22,6 +26,15 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { CROPS } from "@/constants";
 import { ROUTES } from "@/router/routes";
 import type { FieldData, SavedField } from "@/types";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 
 // ── Local storage helpers ──────────────────────────────────────────────────────
 const STORAGE_KEY = "agrovision_saved_fields";
@@ -191,11 +204,13 @@ export function FieldPage() {
         lng,
       })),
       crop: activeField.crop,
+      name: activeField.name,
+      area_ha: activeField.area.hectare,
       lastIrrigation,
       waterCycle,
     };
     sessionStorage.setItem("fieldData", JSON.stringify(fieldData));
-    navigate(ROUTES.UPLOAD);
+    navigate(ROUTES.LOADING);
   };
 
   const handleFitFields = () => mapboxRef.current?.fitToFields();
@@ -320,12 +335,17 @@ export function FieldPage() {
               />
             </div>
           </div>
-          <button
-            onClick={handleNext}
-            className="w-full bg-primary text-primary-foreground font-bold py-4 rounded-2xl shadow-lg hover:bg-green-700 active:scale-95 transition-all flex items-center justify-center gap-2 text-base mt-1"
-          >
-            Keyingi bosqich <ChevronRight className="w-5 h-5" />
-          </button>
+    <div className="flex flex-col gap-3">
+      <button
+        onClick={handleNext}
+        className="w-full bg-primary text-primary-foreground font-bold py-4 rounded-2xl shadow-lg hover:bg-green-700 active:scale-95 transition-all flex items-center justify-center gap-2 text-base mt-1"
+      >
+        Tahlilni boshlash <ChevronRight className="w-5 h-5" />
+      </button>
+      <p className="text-[10px] text-center text-muted-foreground px-4">
+        Ma'lumotlar sun'iy yo'ldosh va AI orqali tahlil qilinadi
+      </p>
+    </div>
         </>
       ) : (
         <div className="text-center py-6 text-sm text-muted-foreground">

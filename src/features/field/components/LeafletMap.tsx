@@ -115,9 +115,9 @@ export function LeafletMap({ drawing, points, onAddPoint, onLocate }: LeafletMap
         // Add marker
         userLocationMarker.current = L.marker([latitude, longitude], { icon }).addTo(map);
 
-        // Fly to location with zoom 9 (approximately 50 km visible area)
-        map.flyTo([latitude, longitude], 9, {
-          duration: 2,
+        // Fly to location with zoom 18 (field level view)
+        map.flyTo([latitude, longitude], 18, {
+          duration: 2.5,
           essential: true,
         });
 

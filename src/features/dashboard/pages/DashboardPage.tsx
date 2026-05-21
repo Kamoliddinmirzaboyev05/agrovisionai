@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import {
   Leaf,
@@ -8,16 +9,53 @@ import {
   TrendingUp,
   Sprout,
   CloudRain,
+  Calendar,
+  Loader2,
 } from "lucide-react";
 import { StatsCard } from "../components/StatsCard";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { riskColor } from "@/lib/utils";
-import { MOCK_HISTORY } from "@/constants";
 import { ROUTES } from "@/router/routes";
+
+interface HistoryResult {
+  id: number;
+  created_at: string;
+  name: string;
+  ndvi_current: number | null;
+  ndvi_label: string;
+}
 
 export function DashboardPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const [history, setHistory] = useState<HistoryResult[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("http://localhost:8000/api/satellite/history/")
+      .then((res) => res.json())
+      .then((data) => {
+        setHistory(data.results || []);
+      })
+      .catch((err) => console.error("History fetch error:", err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const formatDate = (dateStr: string) => {
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString("uz-UZ", { day: "numeric", month: "short" });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const getRiskFromNDVI = (ndvi: number | null) => {
+    if (ndvi === null) return "low";
+    if (ndvi < 0.2) return "high";
+    if (ndvi < 0.5) return "medium";
+    return "low";
+  };
 
   const features = [
     {
@@ -76,21 +114,21 @@ export function DashboardPage() {
           <StatsCard
             icon={TrendingUp}
             label="Jami tahlillar"
-            value="4"
+            value={loading ? "..." : history.length.toString()}
             color="text-green-600"
             bg="bg-green-50"
           />
           <StatsCard
             icon={Sprout}
             label="Faol dalalar"
-            value="3"
+            value={loading ? "..." : Array.from(new Set(history.map(h => h.name))).length.toString()}
             color="text-blue-600"
             bg="bg-blue-50"
           />
           <StatsCard
             icon={CloudRain}
             label="Sug'orish kerak"
-            value="1"
+            value={loading ? "..." : history.filter(h => (h.ndvi_current || 1) < 0.4).length.toString()}
             color="text-amber-600"
             bg="bg-amber-50"
           />
@@ -122,36 +160,48 @@ export function DashboardPage() {
           <h2 className="text-lg font-bold text-foreground mb-4">
             So'nggi tahlillar
           </h2>
-          <div className="grid grid-cols-2 gap-4">
-            {MOCK_HISTORY.slice(0, 2).map((item) => {
-              const rc = riskColor(item.risk);
-              return (
-                <div
-                  key={item.id}
-                  className="bg-white rounded-2xl p-5 border border-border shadow-sm flex items-center gap-4"
-                >
+          {loading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
+            </div>
+          ) : history.length === 0 ? (
+            <div className="text-center py-10 bg-gray-50 rounded-2xl border border-dashed border-border">
+              <p className="text-sm text-muted-foreground">Tahlillar hali yo'q</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              {history.slice(0, 2).map((item) => {
+                const risk = getRiskFromNDVI(item.ndvi_current);
+                const rc = riskColor(risk as any);
+                return (
                   <div
-                    className={`w-10 h-10 ${rc.light} rounded-xl flex items-center justify-center flex-shrink-0`}
+                    key={item.id}
+                    className="bg-white rounded-2xl p-5 border border-border shadow-sm flex items-center gap-4 hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => navigate(ROUTES.HISTORY)}
                   >
-                    <Leaf className={`w-5 h-5 ${rc.text}`} />
+                    <div
+                      className={`w-10 h-10 ${rc.light} rounded-xl flex items-center justify-center flex-shrink-0`}
+                    >
+                      <Leaf className={`w-5 h-5 ${rc.text}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-foreground text-sm truncate capitalize">
+                        {item.name || "Dala"}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground truncate">
+                        {item.ndvi_label} • {formatDate(item.created_at)}
+                      </p>
+                    </div>
+                    <span
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-full text-white flex-shrink-0 ${rc.badge}`}
+                    >
+                      {rc.label}
+                    </span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-foreground text-sm">
-                      {item.crop}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {item.problem} • {item.date}
-                    </p>
-                  </div>
-                  <span
-                    className={`text-xs font-bold px-2.5 py-1 rounded-full text-white flex-shrink-0 ${rc.badge}`}
-                  >
-                    {rc.label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     );

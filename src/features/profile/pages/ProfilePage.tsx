@@ -1,16 +1,25 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { User, Globe, MapPin, Bell, HelpCircle, ChevronRight, LogOut } from 'lucide-react';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { useNavigate } from 'react-router';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { MOCK_HISTORY } from '@/constants';
 import { ROUTES } from '@/router/routes';
 
 export function ProfilePage() {
-  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { user, logout } = useAuth();
   const [notifications, setNotifications] = useState(true);
+  const [historyCount, setHistoryCount] = useState(0);
+
+  useEffect(() => {
+    fetch("http://localhost:8000/api/satellite/history/")
+      .then((res) => res.json())
+      .then((data) => {
+        setHistoryCount(data.count || 0);
+      })
+      .catch((err) => console.error("History fetch error:", err));
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -67,7 +76,7 @@ export function ProfilePage() {
   const statsCard = (
     <div className="bg-gradient-to-r from-green-600 to-green-700 rounded-2xl p-5 text-white flex justify-around">
       <div className="text-center">
-        <p className="text-2xl font-extrabold">{MOCK_HISTORY.length}</p>
+        <p className="text-2xl font-extrabold">{historyCount}</p>
         <p className="text-xs opacity-80">Tahlillar</p>
       </div>
       <div className="w-px bg-white/20" />

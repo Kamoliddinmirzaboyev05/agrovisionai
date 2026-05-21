@@ -165,7 +165,7 @@ function LeafletMap({ drawing, points, onAddPoint, onLocate }: LeafletMapProps) 
   const handleLocate = () => {
     const map = mapRef.current;
     if (!map) return;
-    map.locate({ setView: true, maxZoom: 17 });
+    map.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
     map.once("locationfound", (e: L.LocationEvent) => onLocate({ lat: e.latlng.lat, lng: e.latlng.lng }));
   };
 

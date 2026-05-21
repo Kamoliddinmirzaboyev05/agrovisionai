@@ -9,7 +9,14 @@ import {
 import mapboxgl from "mapbox-gl";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import { area } from "@turf/area";
-import { Layers, Pencil, Undo2, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  Layers,
+  Pencil,
+  Undo2,
+  CheckCircle2,
+  AlertCircle,
+  Navigation,
+} from "lucide-react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import type { SavedField } from "@/types";
@@ -148,36 +155,50 @@ export const MapboxFieldMap = forwardRef<
       const geolocate = new mapboxgl.GeolocateControl({
         positionOptions: {
           enableHighAccuracy: true,
-          timeout: 10000,
+          timeout: 20000,
+          maximumAge: 0,
         },
-        trackUserLocation: false,
-        showUserHeading: false,
+        trackUserLocation: true,
+        showUserHeading: true,
         showAccuracyCircle: true,
-        fitBoundsOptions: { zoom: 17, duration: 2000 },
+        fitBoundsOptions: { 
+          zoom: 18, 
+          duration: 2500,
+          maxZoom: 20 
+        },
       });
 
       mapInstance.addControl(geolocate, "top-right");
 
-      geolocate.on("geolocate", () => {
+      geolocate.on("geolocate", (pos: any) => {
+        const { accuracy } = pos.coords;
+        console.log("Accuracy:", accuracy);
+        
         setLocationStatus({
           type: "success",
-          message: "Joylashuvingiz aniqlandi",
+          message: accuracy < 20 
+            ? "Joylashuvingiz aniqlandi (Yuqori aniqlik)" 
+            : "Joylashuvingiz aniqlandi",
         });
-        setTimeout(() => setLocationStatus({ type: null, message: "" }), 3000);
+        setTimeout(() => setLocationStatus({ type: null, message: "" }), 4000);
       });
 
       geolocate.on("error", (e: { code: number; message: string }) => {
+        console.error("Geolocate error:", e);
         const msgs: Record<number, string> = {
           1: "Joylashuvga ruxsat berilmadi. Brauzer sozlamalarini tekshiring.",
-          2: "Joylashuvni aniqlab bo'lmadi. Internet yoki GPS ni tekshiring.",
-          3: "Vaqt tugadi. Qayta urinib ko'ring.",
+          2: "Joylashuvni aniqlab bo'mladi. Internet yoki GPS ni tekshiring.",
+          3: "Joylashuvni aniqlash vaqti tugadi. Qayta urinib ko'ring.",
         };
         setLocationStatus({
           type: "error",
-          message: msgs[e.code] ?? "Joylashuvni aniqlab bo'lmadi",
+          message: msgs[e.code] ?? "Joylashuvni aniqlab bo'mladi",
         });
         setTimeout(() => setLocationStatus({ type: null, message: "" }), 5000);
       });
+
+      // Save geolocate control to ref if we want to trigger it from custom button
+      (mapInstance as any)._geolocateControl = geolocate;
 
       const drawInstance = new MapboxDraw({
         displayControlsDefault: false,
@@ -494,6 +515,18 @@ export const MapboxFieldMap = forwardRef<
       );
     }, [mapStyle, mapReady]);
 
+    const handleGeolocate = useCallback(() => {
+      if (!map.current) return;
+      const ctrl = (map.current as any)._geolocateControl;
+      if (ctrl) {
+        setLocationStatus({
+          type: "loading",
+          message: "Joylashuv aniqlanmoqda...",
+        });
+        ctrl.trigger();
+      }
+    }, []);
+
     // ── Undo ──
     const handleUndo = useCallback(() => {
       if (!draw.current || historyRef.current.length < 2) return;
@@ -539,18 +572,29 @@ export const MapboxFieldMap = forwardRef<
       <div className="relative w-full h-full select-none">
         <div ref={mapContainer} className="w-full h-full" />
 
-        {/* Style toggle */}
-        <div className="absolute top-3 left-3 z-10 flex rounded-xl overflow-hidden shadow-lg border border-white/20">
-          {(["satellite", "streets"] as const).map((s) => (
+        {/* Style switch */}
+        <div className="absolute top-3 left-3 z-10 flex bg-white/90 backdrop-blur-sm rounded-xl p-1 shadow-lg border border-green-100">
+          {["satellite", "streets"].map((s) => (
             <button
               key={s}
-              onClick={() => setMapStyle(s)}
-              className={`px-3 py-2 text-xs font-semibold flex items-center gap-1.5 transition-colors ${mapStyle === s ? "bg-green-600 text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+              onClick={() => setMapStyle(s as any)}
+              className={`px-3 py-2 text-xs font-semibold flex items-center gap-1.5 rounded-lg transition-all ${mapStyle === s ? "bg-green-600 text-white shadow-sm" : "bg-transparent text-gray-600 hover:bg-gray-100"}`}
             >
               <Layers className="w-3.5 h-3.5" />
-              {s === "satellite" ? "Satellite" : "Ko'cha"}
+              {s === "satellite" ? "Sun'iy yo'ldosh" : "Xarita"}
             </button>
           ))}
+        </div>
+
+        {/* Custom Locate Button */}
+        <div className="absolute top-20 right-3 z-10">
+          <button
+            onClick={handleGeolocate}
+            className="bg-white text-green-700 p-3 rounded-xl shadow-lg border border-green-100 hover:bg-green-50 active:scale-95 transition-all flex items-center justify-center group"
+            title="Mening joylashuvim"
+          >
+            <Navigation className="w-6 h-6 group-hover:rotate-12 transition-transform" />
+          </button>
         </div>
 
         {/* Drawing toolbar */}

@@ -32,6 +32,8 @@ export interface AuthState {
 export interface FieldData {
   points: LatLng[];
   crop: string;
+  name?: string;
+  area_ha?: number;
   lastIrrigation?: string;
   waterCycle?: string;
 }
