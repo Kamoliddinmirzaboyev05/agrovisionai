@@ -1,10 +1,11 @@
 export interface LoginFormData {
-  email: string;
+  username: string;
   password: string;
 }
 
 export interface RegisterFormData {
-  name: string;
+  first_name: string;
+  username: string;
   email: string;
   password: string;
   confirmPassword: string;

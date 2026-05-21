@@ -9,14 +9,14 @@ type AuthAction =
   | { type: 'SET_LOADING'; payload: boolean };
 
 interface AuthContextValue extends AuthState {
-  login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
+  register: (first_name: string, username: string, email: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = 'agrovision_user';
+const API_BASE = '/api/auth';
 
 // ── Reducer ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +37,15 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function getCookie(name: string): string | null {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
+  return null;
+}
+
 // ── Provider ───────────────────────────────────────────────────────────────────
 
 function AuthProvider({ children }: { children: ReactNode }) {
@@ -46,50 +55,115 @@ function AuthProvider({ children }: { children: ReactNode }) {
     isLoading: true,
   });
 
-  // Rehydrate from localStorage on mount
+  // Check auth on mount
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const user: User = JSON.parse(stored);
-        dispatch({ type: 'LOGIN_SUCCESS', payload: user });
-      } else {
+    const checkAuth = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/me/`, {
+          credentials: 'include',
+        });
+        if (res.status === 404) {
+          console.warn('Auth check endpoint not found (404)');
+          dispatch({ type: 'SET_LOADING', payload: false });
+          return;
+        }
+        const data = await res.json();
+        if (data.authenticated && data.user) {
+          dispatch({ type: 'LOGIN_SUCCESS', payload: data.user });
+        } else {
+          dispatch({ type: 'SET_LOADING', payload: false });
+        }
+      } catch (err) {
+        console.error('Auth check failed:', err);
         dispatch({ type: 'SET_LOADING', payload: false });
       }
-    } catch {
-      dispatch({ type: 'SET_LOADING', payload: false });
-    }
+    };
+    checkAuth();
   }, []);
 
-  const login = async (email: string, _password: string): Promise<void> => {
+  const login = async (username: string, password: string): Promise<void> => {
     dispatch({ type: 'SET_LOADING', payload: true });
-    // Simulate network delay
-    await new Promise((r) => setTimeout(r, 600));
-    const user: User = {
-      id: crypto.randomUUID(),
-      name: email.split('@')[0].replace(/[._]/g, ' '),
-      email,
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-    dispatch({ type: 'LOGIN_SUCCESS', payload: user });
+    try {
+      const csrftoken = getCookie('csrftoken');
+      const res = await fetch(`${API_BASE}/login/`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(csrftoken ? { 'X-CSRFToken': csrftoken } : {}),
+        },
+        body: JSON.stringify({ username, password }),
+        credentials: 'include',
+      });
+      
+      if (!res.ok) {
+        const err = await res.json();
+        console.error('Login error details:', err);
+        throw new Error(err.detail || err.message || 'Login xatosi');
+      }
+
+      // After login, fetch user info
+      const meRes = await fetch(`${API_BASE}/me/`, {
+        credentials: 'include',
+      });
+      const meData = await meRes.json();
+      if (meData.authenticated && meData.user) {
+        dispatch({ type: 'LOGIN_SUCCESS', payload: meData.user });
+      } else {
+        throw new Error('Foydalanuvchi ma\'lumotlarini olishda xatolik');
+      }
+    } catch (err: any) {
+      dispatch({ type: 'SET_LOADING', payload: false });
+      throw err;
+    }
   };
 
-  const register = async (name: string, email: string, _password: string): Promise<void> => {
+  const register = async (first_name: string, username: string, email: string, password: string): Promise<void> => {
     dispatch({ type: 'SET_LOADING', payload: true });
-    await new Promise((r) => setTimeout(r, 600));
-    const user: User = {
-      id: crypto.randomUUID(),
-      name,
-      email,
-      region: 'Toshkent viloyati',
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-    dispatch({ type: 'LOGIN_SUCCESS', payload: user });
+    try {
+      const csrftoken = getCookie('csrftoken');
+      const res = await fetch(`${API_BASE}/register/`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(csrftoken ? { 'X-CSRFToken': csrftoken } : {}),
+        },
+        body: JSON.stringify({ first_name, username, email, password }),
+        credentials: 'include',
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        console.error('Register error details:', err);
+        throw new Error(err.detail || err.message || 'Ro\'yxatdan o\'tish xatosi');
+      }
+
+      // After register, fetch user info
+      const meRes = await fetch(`${API_BASE}/me/`, {
+        credentials: 'include',
+      });
+      const meData = await meRes.json();
+      if (meData.authenticated && meData.user) {
+        dispatch({ type: 'LOGIN_SUCCESS', payload: meData.user });
+      } else {
+        throw new Error('Foydalanuvchi ma\'lumotlarini olishda xatolik');
+      }
+    } catch (err: any) {
+      dispatch({ type: 'SET_LOADING', payload: false });
+      throw err;
+    }
   };
 
-  const logout = () => {
-    localStorage.removeItem(STORAGE_KEY);
-    dispatch({ type: 'LOGOUT' });
+  const logout = async () => {
+    try {
+      await fetch(`${API_BASE}/logout/`, { 
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch (err) {
+      console.error('Logout failed:', err);
+    } finally {
+      dispatch({ type: 'LOGOUT' });
+    }
   };
 
   return createElement(AuthContext.Provider, { value: { ...state, login, register, logout } }, children);

@@ -9,7 +9,8 @@ export function RegisterForm() {
   const { register, isLoading } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState<RegisterFormData>({
-    name: '',
+    first_name: '',
+    username: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -19,7 +20,8 @@ export function RegisterForm() {
 
   const validate = (): boolean => {
     const newErrors: Partial<RegisterFormData> = {};
-    if (!form.name.trim()) newErrors.name = "Ism kiritilishi shart";
+    if (!form.first_name.trim()) newErrors.first_name = "Ism kiritilishi shart";
+    if (!form.username.trim()) newErrors.username = "Username kiritilishi shart";
     if (!form.email.trim()) newErrors.email = "Email kiritilishi shart";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) newErrors.email = "Email noto'g'ri formatda";
     if (!form.password) newErrors.password = "Parol kiritilishi shart";
@@ -35,10 +37,10 @@ export function RegisterForm() {
     setServerError('');
     if (!validate()) return;
     try {
-      await register(form.name, form.email, form.password);
+      await register(form.first_name, form.username, form.email, form.password);
       navigate(ROUTES.HOME, { replace: true });
-    } catch {
-      setServerError("Ro'yxatdan o'tish amalga oshmadi. Qayta urinib ko'ring.");
+    } catch (err: any) {
+      setServerError(err.message || "Ro'yxatdan o'tish amalga oshmadi. Qayta urinib ko'ring.");
     }
   };
 
@@ -54,15 +56,30 @@ export function RegisterForm() {
         <label className="text-sm font-semibold text-foreground">Ism va familiya</label>
         <input
           type="text"
-          value={form.name}
-          onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+          value={form.first_name}
+          onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))}
           placeholder="Jasur Abdullayev"
           className={`w-full bg-white border rounded-xl px-4 py-3 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 transition-all ${
-            errors.name ? 'border-red-400' : 'border-border'
+            errors.first_name ? 'border-red-400' : 'border-border'
           }`}
           autoComplete="name"
         />
-        {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
+        {errors.first_name && <p className="text-xs text-red-500">{errors.first_name}</p>}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-semibold text-foreground">Username</label>
+        <input
+          type="text"
+          value={form.username}
+          onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+          placeholder="username"
+          className={`w-full bg-white border rounded-xl px-4 py-3 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 transition-all ${
+            errors.username ? 'border-red-400' : 'border-border'
+          }`}
+          autoComplete="username"
+        />
+        {errors.username && <p className="text-xs text-red-500">{errors.username}</p>}
       </div>
 
       <div className="flex flex-col gap-1.5">

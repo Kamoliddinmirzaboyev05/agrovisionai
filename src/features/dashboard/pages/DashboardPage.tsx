@@ -32,7 +32,7 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/satellite/history/")
+    fetch("/api/satellite/history/", { credentials: 'include' })
       .then((res) => res.json())
       .then((data) => {
         setHistory(data.results || []);

@@ -32,7 +32,7 @@ export function HistoryPage() {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch('http://localhost:8000/api/satellite/history/');
+      const response = await fetch('/api/satellite/history/', { credentials: 'include' });
       if (!response.ok) throw new Error('Ma\'lumotlarni yuklashda xatolik yuz berdi');
       const data: HistoryResponse = await response.json();
       setHistory(data.results);

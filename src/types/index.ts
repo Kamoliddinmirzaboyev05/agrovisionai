@@ -16,11 +16,13 @@ export interface HistoryItem {
 }
 
 export interface User {
-  id: string;
-  name: string;
+  id: number;
+  username: string;
+  first_name: string;
   email: string;
-  region: string;
+  region?: string;
   avatar?: string;
+  date_joined?: string;
 }
 
 export interface AuthState {
@@ -39,12 +41,19 @@ export interface FieldData {
 }
 
 export interface SavedField {
-  id: string;
+  id: number;
   name: string;
   crop: string;
-  polygon: GeoJSON.Feature<GeoJSON.Polygon>;
-  area: { m2: number; sotix: number; hectare: number };
-  createdAt: string;
+  coordinates: LatLng[];
+  center_lat: number;
+  center_lng: number;
+  area_ha: number;
+  area_sotix: number;
+  last_irrigation?: string;
+  water_cycle?: number;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AnalysisResult {

@@ -14,7 +14,7 @@ export function ProfilePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/satellite/history/")
+    fetch("/api/satellite/history/", { credentials: 'include' })
       .then((res) => res.json())
       .then((data) => {
         setHistory(data.results || []);
@@ -33,8 +33,10 @@ export function ProfilePage() {
     navigate(ROUTES.LOGIN, { replace: true });
   };
 
-  const displayName = user?.name || '';
-  const displayRegion = user?.region || '';
+  const displayName = user?.first_name || user?.username || '';
+  const displayRegion = user?.region || 'Hudud belgilanmagan';
+  const displayEmail = user?.email || '';
+  const dateJoined = user?.date_joined ? new Date(user.date_joined).toLocaleDateString('uz-UZ') : '';
 
   const settingsCard = (
     <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
@@ -141,8 +143,18 @@ export function ProfilePage() {
               <div className="w-20 h-20 bg-primary rounded-3xl flex items-center justify-center shadow-lg">
                 <User className="w-10 h-10 text-white" />
               </div>
-              <p className="text-lg font-bold text-foreground">{displayName}</p>
-              <p className="text-sm text-muted-foreground">{displayRegion}</p>
+              <div className="text-center">
+                <p className="text-lg font-bold text-foreground">{displayName}</p>
+                <p className="text-xs text-muted-foreground">{displayEmail}</p>
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <p className="text-xs font-medium text-muted-foreground">{displayRegion}</p>
+                {dateJoined && (
+                  <p className="text-[10px] text-muted-foreground/60">
+                    A'zo bo'ldi: {dateJoined}
+                  </p>
+                )}
+              </div>
             </div>
             {statsCard}
           </div>
@@ -160,12 +172,18 @@ export function ProfilePage() {
 
   return (
     <div className="flex flex-col h-full px-4 pt-5">
-      <div className="flex flex-col items-center py-6">
+      <div className="flex flex-col items-center py-6 text-center">
         <div className="w-20 h-20 bg-primary rounded-3xl flex items-center justify-center shadow-lg mb-3">
           <User className="w-10 h-10 text-white" />
         </div>
         <p className="text-xl font-bold text-foreground">{displayName}</p>
-        <p className="text-sm text-muted-foreground">{displayRegion}</p>
+        <p className="text-sm text-muted-foreground">{displayEmail}</p>
+        <p className="text-xs text-muted-foreground mt-1">{displayRegion}</p>
+        {dateJoined && (
+          <p className="text-[10px] text-muted-foreground/50 mt-1">
+            A'zo bo'ldi: {dateJoined}
+          </p>
+        )}
       </div>
       <div className="flex flex-col gap-3">
         {settingsCard}

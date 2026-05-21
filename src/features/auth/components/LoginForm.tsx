@@ -8,14 +8,13 @@ import type { LoginFormData } from '../types';
 export function LoginForm() {
   const { login, isLoading } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState<LoginFormData>({ email: '', password: '' });
+  const [form, setForm] = useState<LoginFormData>({ username: '', password: '' });
   const [errors, setErrors] = useState<Partial<LoginFormData>>({});
   const [serverError, setServerError] = useState('');
 
   const validate = (): boolean => {
     const newErrors: Partial<LoginFormData> = {};
-    if (!form.email.trim()) newErrors.email = "Email kiritilishi shart";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) newErrors.email = "Email noto'g'ri formatda";
+    if (!form.username.trim()) newErrors.username = "Username kiritilishi shart";
     if (!form.password) newErrors.password = "Parol kiritilishi shart";
     else if (form.password.length < 6) newErrors.password = "Parol kamida 6 ta belgidan iborat bo'lishi kerak";
     setErrors(newErrors);
@@ -27,10 +26,10 @@ export function LoginForm() {
     setServerError('');
     if (!validate()) return;
     try {
-      await login(form.email, form.password);
+      await login(form.username, form.password);
       navigate(ROUTES.HOME, { replace: true });
-    } catch {
-      setServerError("Kirish amalga oshmadi. Qayta urinib ko'ring.");
+    } catch (err: any) {
+      setServerError(err.message || "Kirish amalga oshmadi. Qayta urinib ko'ring.");
     }
   };
 
@@ -43,18 +42,18 @@ export function LoginForm() {
       )}
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-semibold text-foreground">Email</label>
+        <label className="text-sm font-semibold text-foreground">Username</label>
         <input
-          type="email"
-          value={form.email}
-          onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-          placeholder="email@example.com"
+          type="text"
+          value={form.username}
+          onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+          placeholder="username"
           className={`w-full bg-white border rounded-xl px-4 py-3 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 transition-all ${
-            errors.email ? 'border-red-400' : 'border-border'
+            errors.username ? 'border-red-400' : 'border-border'
           }`}
-          autoComplete="email"
+          autoComplete="username"
         />
-        {errors.email && <p className="text-xs text-red-500">{errors.email}</p>}
+        {errors.username && <p className="text-xs text-red-500">{errors.username}</p>}
       </div>
 
       <div className="flex flex-col gap-1.5">

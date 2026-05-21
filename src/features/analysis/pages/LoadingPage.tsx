@@ -35,12 +35,13 @@ export function LoadingPage() {
 
         // Step 2: Satellite data (Real API call)
         setStep(2);
-        const response = await fetch('http://localhost:8000/api/satellite/analyze/', {
+        const response = await fetch('/api/satellite/analyze/', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(payload),
+          credentials: 'include',
         });
 
         if (!response.ok) {

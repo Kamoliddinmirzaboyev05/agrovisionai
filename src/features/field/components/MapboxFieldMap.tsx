@@ -32,14 +32,15 @@ export interface AreaResult {
 
 interface MapboxFieldMapProps {
   savedFields: SavedField[];
-  activeFieldId: string | null;
+  activeFieldId: number | null;
   onPolygonChange: (geojson: GeoJSON.Feature<GeoJSON.Polygon> | null) => void;
   onAreaChange: (area: AreaResult) => void;
-  onFieldClick?: (fieldId: string) => void;
+  onFieldClick?: (fieldId: number) => void;
 }
 
 export interface MapboxFieldMapHandle {
   startDrawing: () => void;
+  setPolygonForEditing: (geojson: GeoJSON.Feature<GeoJSON.Polygon>) => void;
   clearActive: () => void;
   fitToFields: () => void;
 }
@@ -101,6 +102,19 @@ export const MapboxFieldMap = forwardRef<
           draw.current.changeMode("draw_polygon");
         }
       },
+      setPolygonForEditing: (geojson: GeoJSON.Feature<GeoJSON.Polygon>) => {
+        if (!draw.current) return;
+        draw.current.deleteAll();
+        const ids = draw.current.add(geojson);
+        setDrawMode("editing");
+        setHasActive(true);
+        computeArea(geojson);
+        setTimeout(() => {
+          draw.current?.changeMode("direct_select", {
+            featureId: ids[0],
+          });
+        }, 100);
+      },
       clearActive: () => {
         if (!draw.current) return;
         draw.current.deleteAll();
@@ -116,7 +130,7 @@ export const MapboxFieldMap = forwardRef<
         if (!map.current || savedFields.length === 0) return;
         const bounds = new mapboxgl.LngLatBounds();
         savedFields.forEach((f) => {
-          f.polygon.geometry.coordinates[0].forEach(([lng, lat]) =>
+          f.coordinates.forEach(({ lat, lng }) =>
             bounds.extend([lng, lat]),
           );
         });
@@ -376,12 +390,16 @@ export const MapboxFieldMap = forwardRef<
       });
 
       mapInstance.on("mousemove", (e) => {
+        const layers = [
+          "gl-draw-polygon-fill-active",
+          "gl-draw-polygon-fill-static",
+          "saved-fields-fill",
+        ].filter(id => mapInstance.getLayer(id));
+
+        if (layers.length === 0) return;
+
         const features = mapInstance.queryRenderedFeatures(e.point, {
-          layers: [
-            "gl-draw-polygon-fill-active",
-            "gl-draw-polygon-fill-static",
-            "saved-fields-fill",
-          ],
+          layers
         });
         mapInstance.getCanvas().style.cursor =
           features.length > 0 ? "pointer" : "";
@@ -423,7 +441,12 @@ export const MapboxFieldMap = forwardRef<
       const geojson: GeoJSON.FeatureCollection = {
         type: "FeatureCollection",
         features: savedFields.map((f) => ({
-          ...f.polygon,
+          type: "Feature",
+          id: f.id,
+          geometry: {
+            type: "Polygon",
+            coordinates: [f.coordinates.map((c) => [c.lng, c.lat])],
+          },
           properties: {
             id: f.id,
             name: f.name,
@@ -470,15 +493,14 @@ export const MapboxFieldMap = forwardRef<
 
       // Click on saved field
       mapInstance.on("click", "saved-fields-fill", (e) => {
-        const id = e.features?.[0]?.properties?.id as string | undefined;
-        if (id && onFieldClick) onFieldClick(id);
+        const id = e.features?.[0]?.properties?.id as number | undefined;
+        if (id !== undefined && onFieldClick) onFieldClick(id);
       });
 
       // Label markers at centroid
       savedFields.forEach((f) => {
-        const coords = f.polygon.geometry.coordinates[0];
-        const lng = coords.reduce((s, c) => s + c[0], 0) / coords.length;
-        const lat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+        const lng = f.center_lng;
+        const lat = f.center_lat;
         const isActive = f.id === activeFieldId;
 
         const el = document.createElement("div");

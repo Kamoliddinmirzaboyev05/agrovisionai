@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "react-router";
 import {
   Plus,
@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Sprout,
   Save,
+  Edit,
   Loader2,
   Thermometer,
   Droplets,
@@ -38,24 +39,8 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-// ── Local storage helpers ──────────────────────────────────────────────────────
-const STORAGE_KEY = "agrovision_saved_fields";
-
-function loadFields(): SavedField[] {
-  try {
-    return JSON.parse(
-      localStorage.getItem(STORAGE_KEY) ?? "[]",
-    ) as SavedField[];
-  } catch {
-    return [];
-  }
-}
-
-function saveFields(fields: SavedField[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(fields));
-}
-
-// Modal olib tashlandi - o'ng panelda inline form ishlatiladi
+// ── API helpers ──────────────────────────────────────────────────────────────
+const API_BASE = "/api/satellite/fields/";
 
 // ── FieldPage ──────────────────────────────────────────────────────────────────
 export function FieldPage() {
@@ -63,10 +48,30 @@ export function FieldPage() {
   const isMobile = useIsMobile();
   const mapboxRef = useRef<MapboxFieldMapHandle>(null);
 
-  const [savedFields, setSavedFields] = useState<SavedField[]>(loadFields);
-  const [activeFieldId, setActiveFieldId] = useState<string | null>(
-    () => loadFields()[0]?.id ?? null,
-  );
+  const [savedFields, setSavedFields] = useState<SavedField[]>([]);
+  const [activeFieldId, setActiveFieldId] = useState<number | null>(null);
+  const [isLoadingFields, setIsLoadingFields] = useState(true);
+
+  // Fetch fields from API
+  useEffect(() => {
+    const fetchFields = async () => {
+      try {
+        setIsLoadingFields(true);
+        const res = await fetch(API_BASE, { credentials: 'include' });
+        const data = await res.json();
+        const fields = data.results || [];
+        setSavedFields(fields);
+        if (fields.length > 0 && !activeFieldId) {
+          setActiveFieldId(fields[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to fetch fields:", err);
+      } finally {
+        setIsLoadingFields(false);
+      }
+    };
+    fetchFields();
+  }, []);
   // Currently drawn (unsaved) polygon
   const [draftPolygon, setDraftPolygon] =
     useState<GeoJSON.Feature<GeoJSON.Polygon> | null>(null);
@@ -80,6 +85,7 @@ export function FieldPage() {
   const [fieldName, setFieldName] = useState<string>("");
   const [crop, setCrop] = useState<string>("");
   const [isDrawingMode, setIsDrawingMode] = useState(false);
+  const [editingFieldId, setEditingFieldId] = useState<number | null>(null);
 
   // Analysis panel state
   const [analysisTab, setAnalysisTab] = useState("NDVI");
@@ -112,37 +118,88 @@ export function FieldPage() {
   };
 
   // Save field with name and crop
-  const handleSaveField = () => {
+  const handleSaveField = async () => {
     if (!draftPolygon || draftArea.m2 < 100 || !fieldName.trim() || !crop)
       return;
 
-    const newField: SavedField = {
-      id: crypto.randomUUID(),
+    const coordinates = draftPolygon.geometry.coordinates[0].map(([lng, lat]) => ({ lat, lng }));
+    const center_lng = coordinates.reduce((s, c) => s + c.lng, 0) / coordinates.length;
+    const center_lat = coordinates.reduce((s, c) => s + c.lat, 0) / coordinates.length;
+
+    const payload = {
       name: fieldName.trim(),
       crop,
-      polygon: draftPolygon,
-      area: draftArea,
-      createdAt: new Date().toISOString(),
+      coordinates,
+      center_lat,
+      center_lng,
+      area_ha: draftArea.hectare,
+      notes: "",
     };
-    const updated = [...savedFields, newField];
-    setSavedFields(updated);
-    saveFields(updated);
-    setActiveFieldId(newField.id);
 
-    // Reset form
-    setFieldName("");
-    setCrop("");
-    setIsDrawingMode(false);
+    try {
+      const url = editingFieldId ? `${API_BASE}${editingFieldId}/` : API_BASE;
+      const method = editingFieldId ? "PATCH" : "POST";
 
-    // Clear draw canvas
-    mapboxRef.current?.clearActive();
-    setDraftPolygon(null);
-    setDraftArea({ m2: 0, sotix: 0, hectare: 0 });
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Field saqlashda xatolik");
+      
+      const savedField: SavedField = await res.json();
+      
+      if (editingFieldId) {
+        setSavedFields((prev) => prev.map(f => f.id === editingFieldId ? savedField : f));
+      } else {
+        setSavedFields((prev) => [...prev, savedField]);
+      }
+      
+      setActiveFieldId(savedField.id);
+
+      // Reset form
+      setFieldName("");
+      setCrop("");
+      setIsDrawingMode(false);
+      setEditingFieldId(null);
+
+      // Clear draw canvas
+      mapboxRef.current?.clearActive();
+      setDraftPolygon(null);
+      setDraftArea({ m2: 0, sotix: 0, hectare: 0 });
+    } catch (err) {
+      console.error("Save field failed:", err);
+      alert("Dalani saqlashda xatolik yuz berdi.");
+    }
+  };
+
+  const handleEditField = (field: SavedField) => {
+    setEditingFieldId(field.id);
+    setFieldName(field.name);
+    setCrop(field.crop);
+    setIsDrawingMode(true);
+    if (isMobile) setMobileView("map");
+    
+    const geojson: GeoJSON.Feature<GeoJSON.Polygon> = {
+      type: "Feature",
+      geometry: {
+        type: "Polygon",
+        coordinates: [field.coordinates.map(c => [c.lng, c.lat])]
+      },
+      properties: {}
+    };
+    
+    setTimeout(() => {
+      mapboxRef.current?.setPolygonForEditing(geojson);
+    }, 100);
   };
 
   // Cancel drawing
   const handleCancelDrawing = () => {
     setIsDrawingMode(false);
+    setEditingFieldId(null);
     setFieldName("");
     setCrop("");
     mapboxRef.current?.clearActive();
@@ -150,15 +207,25 @@ export function FieldPage() {
     setDraftArea({ m2: 0, sotix: 0, hectare: 0 });
   };
 
-  const handleDeleteField = (id: string) => {
-    const updated = savedFields.filter((f) => f.id !== id);
-    setSavedFields(updated);
-    saveFields(updated);
-    if (activeFieldId === id) setActiveFieldId(updated[0]?.id ?? null);
+  const handleDeleteField = async (id: number) => {
+    if (!confirm("Haqiqatan ham ushbu dalani o'chirmoqchimisiz?")) return;
+    try {
+      const res = await fetch(`${API_BASE}${id}/`, { 
+        method: "DELETE",
+        credentials: "include" 
+      });
+      if (!res.ok) throw new Error("O'chirishda xatolik");
+      
+      const updated = savedFields.filter((f) => f.id !== id);
+      setSavedFields(updated);
+      if (activeFieldId === id) setActiveFieldId(updated[0]?.id ?? null);
+    } catch (err) {
+      console.error("Delete field failed:", err);
+    }
   };
 
   const handleFieldClick = useCallback(
-    (id: string) => {
+    (id: number) => {
       setActiveFieldId(id);
       if (isMobile) setMobileView("analysis");
     },
@@ -170,17 +237,16 @@ export function FieldPage() {
     try {
       setIsAnalyzing(true);
       const payload = {
-        coordinates: activeField.polygon.geometry.coordinates[0].map(
-          ([lng, lat]) => ({ lat, lng }),
-        ),
-        area_ha: activeField.area.hectare,
+        coordinates: activeField.coordinates,
+        area_ha: activeField.area_ha,
         save: false,
         name: activeField.name,
       };
-      const res = await fetch("http://localhost:8000/api/satellite/analyze/", {
+      const res = await fetch("/api/satellite/analyze/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        credentials: "include",
       });
       const data = await res.json();
       setAnalysisResult(data);
@@ -197,13 +263,10 @@ export function FieldPage() {
       return;
     }
     const fieldData: FieldData = {
-      points: activeField.polygon.geometry.coordinates[0].map(([lng, lat]) => ({
-        lat,
-        lng,
-      })),
+      points: activeField.coordinates,
       crop: activeField.crop,
       name: activeField.name,
-      area_ha: activeField.area.hectare,
+      area_ha: activeField.area_ha,
     };
     sessionStorage.setItem("fieldData", JSON.stringify(fieldData));
     navigate(ROUTES.LOADING);
@@ -354,7 +417,7 @@ export function FieldPage() {
                     className="flex-1 py-3 rounded-xl bg-primary text-white font-semibold hover:opacity-90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     <Save className="w-4 h-4" />
-                    Saqlash
+                    {editingFieldId ? "Yangilash" : "Saqlash"}
                   </button>
                 </div>
               </div>
@@ -381,16 +444,16 @@ export function FieldPage() {
               {activeField ? (
                 <>
                   <div className="flex flex-col gap-1 mb-3">
-                    {activeField.polygon.geometry.coordinates[0]
+                    {activeField.coordinates
                       .slice(0, 4)
                       .map((coord, idx) => (
                         <div key={idx} className="flex gap-3 text-xs font-mono">
                           <span className="text-muted-foreground/60">{idx + 1}</span>
                           <span className="text-primary font-semibold">
-                            {coord[1].toFixed(5)},
+                            {coord.lat.toFixed(5)},
                           </span>
                           <span className="text-primary font-semibold">
-                            {coord[0].toFixed(5)}
+                            {coord.lng.toFixed(5)}
                           </span>
                         </div>
                       ))}
@@ -398,11 +461,11 @@ export function FieldPage() {
                   <div className="text-xs">
                     <span className="text-muted-foreground font-medium">Maydon: </span>
                     <span className="text-primary font-bold">
-                      {activeField.area.hectare.toFixed(2)} ha
+                      {activeField.area_ha.toFixed(2)} ha
                     </span>
                     <span className="text-muted-foreground/40 font-medium mx-1">•</span>
                     <span className="text-muted-foreground font-medium">
-                      {activeField.area.sotix.toFixed(1)} sotix
+                      {activeField.area_sotix.toFixed(1)} sotix
                     </span>
                   </div>
                 </>
@@ -1003,18 +1066,29 @@ export function FieldPage() {
                   {f.name}
                 </p>
                 <p className="text-xs text-muted-foreground truncate">
-                  {f.crop} • {f.area.sotix} sotix
+                  {f.crop} • {f.area_sotix} sotix
                 </p>
               </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteField(f.id);
-                }}
-                className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors flex-shrink-0"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex gap-1">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleEditField(f);
+                  }}
+                  className="p-1.5 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors flex-shrink-0"
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteField(f.id);
+                  }}
+                  className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors flex-shrink-0"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           );
         })
@@ -1026,17 +1100,26 @@ export function FieldPage() {
     <div className="flex flex-col gap-3">
       {activeField ? (
         <>
-          <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-            <div className="min-w-0">
-              <p className="text-sm font-bold text-green-800 truncate">
-                {activeField.name}
-              </p>
-              <p className="text-xs text-green-600">
-                {activeField.area.sotix} sotix •{" "}
-                {activeField.area.m2.toLocaleString()} m²
-              </p>
+          <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-green-800 truncate">
+                  {activeField.name}
+                </p>
+                <p className="text-xs text-green-600">
+                  {activeField.area_sotix} sotix •{" "}
+                  {(activeField.area_ha * 10000).toLocaleString()} m²
+                </p>
+              </div>
             </div>
+            <button
+              onClick={() => handleEditField(activeField)}
+              className="p-2 rounded-lg bg-white border border-green-200 text-green-700 hover:bg-green-100 transition-all flex items-center gap-1.5 text-xs font-bold"
+            >
+              <Edit className="w-3.5 h-3.5" />
+              Tahrirlash
+            </button>
           </div>
           <div>
             <label className="text-sm font-semibold text-foreground mb-1.5 block">
