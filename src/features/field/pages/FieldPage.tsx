@@ -64,9 +64,17 @@ interface NameDialogProps {
   defaultName: string;
   onConfirm: (name: string) => void;
   onCancel: () => void;
+  crop: string;
+  onCropChange: (crop: string) => void;
 }
 
-function NameDialog({ defaultName, onConfirm, onCancel }: NameDialogProps) {
+function NameDialog({
+  defaultName,
+  onConfirm,
+  onCancel,
+  crop,
+  onCropChange,
+}: NameDialogProps) {
   const [name, setName] = useState(defaultName);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
@@ -87,6 +95,23 @@ function NameDialog({ defaultName, onConfirm, onCancel }: NameDialogProps) {
           placeholder="Masalan: Shimoliy dala"
           className="w-full border border-border rounded-xl px-4 py-3 text-foreground font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 mb-4"
         />
+        <div className="mb-4">
+          <label className="text-sm font-semibold text-foreground mb-2 block">
+            Ekin turi
+          </label>
+          <select
+            value={crop}
+            onChange={(e) => onCropChange(e.target.value)}
+            className="w-full border border-border rounded-xl px-4 py-3 text-foreground font-medium focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            <option value="">Ekin turini tanlang</option>
+            {CROPS.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="flex gap-2">
           <button
             onClick={onCancel}
@@ -95,8 +120,8 @@ function NameDialog({ defaultName, onConfirm, onCancel }: NameDialogProps) {
             Bekor qilish
           </button>
           <button
-            onClick={() => name.trim() && onConfirm(name.trim())}
-            disabled={!name.trim()}
+            onClick={() => name.trim() && crop && onConfirm(name.trim())}
+            disabled={!name.trim() || !crop}
             className="flex-1 py-3 rounded-xl bg-green-600 text-white font-semibold hover:bg-green-700 transition-colors disabled:opacity-40"
           >
             Saqlash
@@ -128,6 +153,7 @@ export function FieldPage() {
 
   // Name dialog state
   const [showNameDialog, setShowNameDialog] = useState(false);
+  const [crop, setCrop] = useState<string>("");
   const pendingFieldRef = useRef<{
     polygon: GeoJSON.Feature<GeoJSON.Polygon>;
     area: AreaResult;
@@ -143,7 +169,9 @@ export function FieldPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // Panel view on mobile: 'map' | 'analysis' | 'history'
-  const [mobileView, setMobileView] = useState<"map" | "analysis" | "history">("map");
+  const [mobileView, setMobileView] = useState<"map" | "analysis" | "history">(
+    "map",
+  );
 
   const activeField = savedFields.find((f) => f.id === activeFieldId) ?? null;
 
@@ -198,6 +226,7 @@ export function FieldPage() {
     saveFields(updated);
     setActiveFieldId(newField.id);
     setShowNameDialog(false);
+    setCrop("");
     pendingFieldRef.current = null;
     // Clear draw canvas
     mapboxRef.current?.clearActive();
@@ -279,64 +308,69 @@ export function FieldPage() {
     navigate(ROUTES.LOADING);
   };
 
-  // ── History Sidebar ────────────────────────────────────────────────────────
-  const historySidebar = (
-    <div className="w-72 flex-shrink-0 bg-[#0f172a] text-white flex flex-col h-full border-r border-white/10">
-      <div className="p-4 border-b border-white/10 flex items-center justify-between">
+  // ── Fields Sidebar ────────────────────────────────────────────────────────
+  const fieldsSidebar = (
+    <div className="w-72 flex-shrink-0 bg-white flex flex-col h-full border-r border-border">
+      <div className="p-4 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-5 h-5 bg-blue-500 rounded flex items-center justify-center">
-            <Calendar className="w-3 h-3" />
+          <div className="w-5 h-5 bg-green-500 rounded flex items-center justify-center">
+            <Map className="w-3 h-3 text-white" />
           </div>
-          <span className="font-bold text-sm">Tarix</span>
-          <span className="bg-blue-600 text-[10px] px-1.5 py-0.5 rounded-full">
-            {history.length}
+          <span className="font-bold text-sm text-foreground">
+            Saqlangan maydonlar
+          </span>
+          <span className="bg-green-100 text-green-700 text-[10px] px-1.5 py-0.5 rounded-full font-semibold">
+            {savedFields.length}
           </span>
         </div>
-        <button className="text-white/50 hover:text-white transition-colors">
-          <ChevronRight className="w-4 h-4 rotate-180" />
-        </button>
       </div>
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
-        {loadingHistory ? (
-          <div className="flex items-center justify-center py-10">
-            <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+        {savedFields.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 text-center opacity-60">
+            <Map className="w-8 h-8 mb-2 text-muted-foreground" />
+            <p className="text-xs font-medium">Hali maydon belgilanmagan</p>
           </div>
         ) : (
-          history.map((item) => (
+          savedFields.map((field) => (
             <div
-              key={item.id}
-              onClick={() => setAnalysisResult(item)}
-              className={`bg-[#1e293b] rounded-xl p-3 border ${analysisResult?.id === item.id ? "border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.3)]" : "border-white/5"} hover:border-blue-500/50 transition-all cursor-pointer group`}
+              key={field.id}
+              onClick={() => handleFieldClick(field.id)}
+              className={`bg-gray-50 rounded-xl p-3 border-2 transition-all cursor-pointer group ${
+                activeFieldId === field.id
+                  ? "border-green-500 shadow-md bg-green-50"
+                  : "border-border hover:border-green-300"
+              }`}
             >
               <div className="flex items-start justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="bg-orange-500/20 text-orange-500 text-[10px] font-bold px-1.5 py-0.5 rounded border border-orange-500/30">
-                    {item.ndvi?.current?.toFixed(2) || item.ndvi_current?.toFixed(2) || "0.00"}
-                  </span>
-                  <span className="font-bold text-xs truncate max-w-[100px]">
-                    {item.name}
-                  </span>
+                <div className="flex items-center gap-2 flex-1">
+                  <Sprout
+                    className={`w-4 h-4 flex-shrink-0 ${activeFieldId === field.id ? "text-green-600" : "text-muted-foreground"}`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-sm text-foreground truncate">
+                      {field.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {field.crop}
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <div className="text-[10px] text-white/40 mb-3 font-mono">
-                {item.location?.lat?.toFixed(4) || item.center_lat?.toFixed(4)}, {item.location?.lng?.toFixed(4) || item.center_lng?.toFixed(4)} •{" "}
-                {item.location?.area_ha?.toFixed(1) || item.area_ha?.toFixed(1)} ha
-              </div>
-              <div className="flex items-center gap-2 text-[10px] text-white/60 mb-3">
-                <Calendar className="w-3 h-3" />
-                {new Date(item.created_at).toLocaleDateString()} • DI{" "}
-                {item.ndvi?.drought_index?.toFixed(2) || item.drought_index?.toFixed(2) || "0.00"}
-              </div>
-              <div className="flex gap-2">
-                <button className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors">
-                  <Download className="w-3 h-3" /> Yuklash
-                </button>
                 <button
-                  onClick={(e) => handleDeleteHistory(e, item.id)}
-                  className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteField(field.id);
+                  }}
+                  className="p-1 rounded-lg hover:bg-red-100 text-muted-foreground hover:text-red-600 transition-colors"
                 >
-                  <X className="w-3 h-3" /> O'chirish
+                  <Trash2 className="w-4 h-4" />
                 </button>
+              </div>
+              <div className="text-[10px] text-muted-foreground mb-2 font-mono">
+                {field.area.hectare.toFixed(2)} ha •{" "}
+                {(field.area.m2 / 1000000).toFixed(4)} km²
+              </div>
+              <div className="text-[10px] text-muted-foreground">
+                {new Date(field.createdAt).toLocaleDateString()}
               </div>
             </div>
           ))
@@ -347,22 +381,24 @@ export function FieldPage() {
 
   // ── Analysis Panel ─────────────────────────────────────────────────────────
   const analysisPanel = (
-    <div className="w-[450px] flex-shrink-0 bg-[#0f172a] text-white flex flex-col h-full border-l border-white/10">
-      <div className="p-4 border-b border-white/10 flex items-center justify-between">
+    <div className="w-[450px] flex-shrink-0 bg-white flex flex-col h-full border-l border-border">
+      <div className="p-4 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-          <span className="font-bold text-sm">Sun'iy yo'ldosh tahlili</span>
+          <span className="font-bold text-sm text-foreground">
+            Sun'iy yo'ldosh tahlili
+          </span>
         </div>
         <div className="flex gap-2">
-          <button className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors">
+          <button className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800 transition-colors">
             <Save className="w-4 h-4" />
           </button>
-          <button className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors">
+          <button className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800 transition-colors">
             <FileJson className="w-4 h-4" />
           </button>
           <button
             onClick={() => setAnalysisResult(null)}
-            className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+            className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -372,7 +408,7 @@ export function FieldPage() {
       <div className="flex-1 overflow-y-auto">
         {/* Coordinates Section */}
         <div className="p-4">
-          <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-3">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-3">
             Belgilangan koordinatalar
           </p>
           <div className="flex flex-col gap-1 mb-3">
@@ -380,19 +416,23 @@ export function FieldPage() {
               .slice(0, 4)
               .map((coord, idx) => (
                 <div key={idx} className="flex gap-3 text-xs font-mono">
-                  <span className="text-white/20">{idx + 1}</span>
-                  <span className="text-green-500">{coord[1].toFixed(5)},</span>
-                  <span className="text-green-500">{coord[0].toFixed(5)}</span>
+                  <span className="text-gray-400">{idx + 1}</span>
+                  <span className="text-green-600 font-semibold">
+                    {coord[1].toFixed(5)},
+                  </span>
+                  <span className="text-green-600 font-semibold">
+                    {coord[0].toFixed(5)}
+                  </span>
                 </div>
               ))}
           </div>
           <div className="text-xs">
-            <span className="text-white/40 font-medium">Maydon: </span>
-            <span className="text-green-500 font-bold">
+            <span className="text-muted-foreground font-medium">Maydon: </span>
+            <span className="text-green-600 font-bold">
               {activeField?.area?.hectare?.toFixed(2) || "0.00"} ha
             </span>
-            <span className="text-white/40 font-medium mx-1">•</span>
-            <span className="text-white/40 font-medium">
+            <span className="text-muted-foreground font-medium mx-1">•</span>
+            <span className="text-muted-foreground font-medium">
               {(activeField?.area?.m2
                 ? activeField.area.m2 / 1000000
                 : 0
@@ -420,12 +460,12 @@ export function FieldPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-white/10 px-4 mb-6">
+        <div className="flex border-b border-border px-4 mb-6">
           {["NDVI", "Tuproq", "Ob-havo", "AI Tahlil"].map((tab) => (
             <button
               key={tab}
               onClick={() => setAnalysisTab(tab)}
-              className={`flex-1 py-3 text-xs font-bold transition-all border-b-2 ${analysisTab === tab ? "text-green-500 border-green-500" : "text-white/40 border-transparent hover:text-white/60"}`}
+              className={`flex-1 py-3 text-xs font-bold transition-all border-b-2 ${analysisTab === tab ? "text-green-600 border-green-600" : "text-muted-foreground border-transparent hover:text-foreground"}`}
             >
               {tab}
             </button>
@@ -445,12 +485,15 @@ export function FieldPage() {
                     {analysisResult.ndvi?.current?.toFixed(3) || "0.000"}
                   </h2>
                   <p className="text-[10px] text-white/30 mb-4">
-                    {analysisResult.analysis?.ndvi_baho || "Normalized Difference Vegetation Index"}
+                    {analysisResult.analysis?.ndvi_baho ||
+                      "Normalized Difference Vegetation Index"}
                   </p>
                   <div className="flex items-center justify-center gap-3">
                     {analysisResult.ndvi?.change !== undefined && (
                       <div className="bg-green-500/20 text-green-500 text-[10px] font-bold px-3 py-1 rounded-full border border-green-500/30 flex items-center gap-1">
-                        {analysisResult.ndvi.change >= 0 ? "↑" : "↓"} {analysisResult.ndvi.change >= 0 ? "+" : ""}{analysisResult.ndvi.change?.toFixed(3)}
+                        {analysisResult.ndvi.change >= 0 ? "↑" : "↓"}{" "}
+                        {analysisResult.ndvi.change >= 0 ? "+" : ""}
+                        {analysisResult.ndvi.change?.toFixed(3)}
                       </div>
                     )}
                     <div className="bg-white/5 text-white/60 text-[10px] font-bold px-3 py-1 rounded-full border border-white/10">
@@ -488,7 +531,8 @@ export function FieldPage() {
                     NDVI Trend (Oylik)
                   </p>
                   <div className="h-48 w-full bg-[#1e293b]/50 rounded-xl p-2 border border-white/5 flex items-center justify-center">
-                    {analysisResult.ndvi?.monthly && analysisResult.ndvi.monthly.length > 0 ? (
+                    {analysisResult.ndvi?.monthly &&
+                    analysisResult.ndvi.monthly.length > 0 ? (
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={analysisResult.ndvi.monthly}>
                           <CartesianGrid
@@ -532,7 +576,9 @@ export function FieldPage() {
                         </LineChart>
                       </ResponsiveContainer>
                     ) : (
-                      <p className="text-[10px] text-white/20 italic">Trend ma'lumotlari mavjud emas</p>
+                      <p className="text-[10px] text-white/20 italic">
+                        Trend ma'lumotlari mavjud emas
+                      </p>
                     )}
                   </div>
                 </div>
@@ -547,8 +593,11 @@ export function FieldPage() {
                       <span className="text-[10px] font-bold text-white/60">
                         Juda quruq ⟷ Nam
                       </span>
-                      <span className={`text-xs font-bold ${analysisResult.ndvi?.drought_index < 0 ? "text-orange-400" : "text-blue-400"}`}>
-                        {analysisResult.ndvi?.drought_index?.toFixed(2) || "0.00"}{" "}
+                      <span
+                        className={`text-xs font-bold ${analysisResult.ndvi?.drought_index < 0 ? "text-orange-400" : "text-blue-400"}`}
+                      >
+                        {analysisResult.ndvi?.drought_index?.toFixed(2) ||
+                          "0.00"}{" "}
                         {analysisResult.analysis?.qurgochlik}
                       </span>
                     </div>
@@ -588,20 +637,36 @@ export function FieldPage() {
                   </p>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="flex flex-col gap-1">
-                      <span className="text-[10px] text-white/40">pH darajasi</span>
-                      <span className="text-lg font-bold text-blue-400">{analysisResult.soil.properties?.ph_h2o?.toFixed(1)}</span>
+                      <span className="text-[10px] text-white/40">
+                        pH darajasi
+                      </span>
+                      <span className="text-lg font-bold text-blue-400">
+                        {analysisResult.soil.properties?.ph_h2o?.toFixed(1)}
+                      </span>
                     </div>
                     <div className="flex flex-col gap-1">
-                      <span className="text-[10px] text-white/40">Organik uglerod</span>
-                      <span className="text-lg font-bold text-green-400">{analysisResult.soil.properties?.soc?.toFixed(1)} g/kg</span>
+                      <span className="text-[10px] text-white/40">
+                        Organik uglerod
+                      </span>
+                      <span className="text-lg font-bold text-green-400">
+                        {analysisResult.soil.properties?.soc?.toFixed(1)} g/kg
+                      </span>
                     </div>
                     <div className="flex flex-col gap-1">
-                      <span className="text-[10px] text-white/40">Azot miqdori</span>
-                      <span className="text-lg font-bold text-purple-400">{analysisResult.soil.properties?.nitrogen} mg/kg</span>
+                      <span className="text-[10px] text-white/40">
+                        Azot miqdori
+                      </span>
+                      <span className="text-lg font-bold text-purple-400">
+                        {analysisResult.soil.properties?.nitrogen} mg/kg
+                      </span>
                     </div>
                     <div className="flex flex-col gap-1">
-                      <span className="text-[10px] text-white/40">Zichlik (BDOD)</span>
-                      <span className="text-lg font-bold text-orange-400">{analysisResult.soil.properties?.bdod} kg/m³</span>
+                      <span className="text-[10px] text-white/40">
+                        Zichlik (BDOD)
+                      </span>
+                      <span className="text-lg font-bold text-orange-400">
+                        {analysisResult.soil.properties?.bdod} kg/m³
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -613,24 +678,45 @@ export function FieldPage() {
                   <div className="flex flex-col gap-3">
                     <div className="flex justify-between text-xs">
                       <span className="text-white/60">Qum (Sand)</span>
-                      <span className="font-bold">{analysisResult.soil.properties?.sand}%</span>
+                      <span className="font-bold">
+                        {analysisResult.soil.properties?.sand}%
+                      </span>
                     </div>
                     <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                      <div className="h-full bg-yellow-500" style={{ width: `${analysisResult.soil.properties?.sand}%` }} />
+                      <div
+                        className="h-full bg-yellow-500"
+                        style={{
+                          width: `${analysisResult.soil.properties?.sand}%`,
+                        }}
+                      />
                     </div>
                     <div className="flex justify-between text-xs mt-2">
                       <span className="text-white/60">Loy (Clay)</span>
-                      <span className="font-bold">{analysisResult.soil.properties?.clay}%</span>
+                      <span className="font-bold">
+                        {analysisResult.soil.properties?.clay}%
+                      </span>
                     </div>
                     <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                      <div className="h-full bg-red-500" style={{ width: `${analysisResult.soil.properties?.clay}%` }} />
+                      <div
+                        className="h-full bg-red-500"
+                        style={{
+                          width: `${analysisResult.soil.properties?.clay}%`,
+                        }}
+                      />
                     </div>
                     <div className="flex justify-between text-xs mt-2">
                       <span className="text-white/60">Silt</span>
-                      <span className="font-bold">{analysisResult.soil.properties?.silt}%</span>
+                      <span className="font-bold">
+                        {analysisResult.soil.properties?.silt}%
+                      </span>
                     </div>
                     <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-500" style={{ width: `${analysisResult.soil.properties?.silt}%` }} />
+                      <div
+                        className="h-full bg-blue-500"
+                        style={{
+                          width: `${analysisResult.soil.properties?.silt}%`,
+                        }}
+                      />
                     </div>
                   </div>
                 </div>
@@ -642,7 +728,9 @@ export function FieldPage() {
                     </div>
                     <div>
                       <p className="text-[10px] text-white/40">Yuza temp.</p>
-                      <p className="text-sm font-bold">{analysisResult.soil.surface_temp}°C</p>
+                      <p className="text-sm font-bold">
+                        {analysisResult.soil.surface_temp}°C
+                      </p>
                     </div>
                   </div>
                   <div className="bg-[#1e293b] rounded-xl p-4 border border-white/5 flex items-center gap-3">
@@ -650,8 +738,12 @@ export function FieldPage() {
                       <Droplets className="w-4 h-4 text-blue-500" />
                     </div>
                     <div>
-                      <p className="text-[10px] text-white/40">Namlik (0-1cm)</p>
-                      <p className="text-sm font-bold">{analysisResult.soil.moisture_0_1cm}%</p>
+                      <p className="text-[10px] text-white/40">
+                        Namlik (0-1cm)
+                      </p>
+                      <p className="text-sm font-bold">
+                        {analysisResult.soil.moisture_0_1cm}%
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -659,7 +751,9 @@ export function FieldPage() {
             ) : (
               <div className="flex flex-col items-center justify-center py-20 text-center opacity-40">
                 <Map className="w-8 h-8 mb-4" />
-                <p className="text-xs font-medium">Ma'lumotlar yuklanmoqda...</p>
+                <p className="text-xs font-medium">
+                  Ma'lumotlar yuklanmoqda...
+                </p>
               </div>
             )}
           </div>
@@ -672,23 +766,39 @@ export function FieldPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-[#1e293b] rounded-2xl p-5 border border-white/5 text-center">
                     <Thermometer className="w-6 h-6 text-orange-500 mx-auto mb-2" />
-                    <p className="text-[10px] text-white/40 uppercase">O'rtacha harorat</p>
-                    <p className="text-2xl font-black">{analysisResult.weather.avg_temp}°C</p>
+                    <p className="text-[10px] text-white/40 uppercase">
+                      O'rtacha harorat
+                    </p>
+                    <p className="text-2xl font-black">
+                      {analysisResult.weather.avg_temp}°C
+                    </p>
                   </div>
                   <div className="bg-[#1e293b] rounded-2xl p-5 border border-white/5 text-center">
                     <CloudRain className="w-6 h-6 text-blue-500 mx-auto mb-2" />
-                    <p className="text-[10px] text-white/40 uppercase">Yillik yog'in</p>
-                    <p className="text-2xl font-black">{analysisResult.weather.annual_precip} mm</p>
+                    <p className="text-[10px] text-white/40 uppercase">
+                      Yillik yog'in
+                    </p>
+                    <p className="text-2xl font-black">
+                      {analysisResult.weather.annual_precip} mm
+                    </p>
                   </div>
                   <div className="bg-[#1e293b] rounded-2xl p-5 border border-white/5 text-center">
                     <Wind className="w-6 h-6 text-teal-400 mx-auto mb-2" />
-                    <p className="text-[10px] text-white/40 uppercase">Shamol tezligi</p>
-                    <p className="text-2xl font-black">{analysisResult.weather.avg_wind} m/s</p>
+                    <p className="text-[10px] text-white/40 uppercase">
+                      Shamol tezligi
+                    </p>
+                    <p className="text-2xl font-black">
+                      {analysisResult.weather.avg_wind} m/s
+                    </p>
                   </div>
                   <div className="bg-[#1e293b] rounded-2xl p-5 border border-white/5 text-center">
                     <Droplets className="w-6 h-6 text-blue-400 mx-auto mb-2" />
-                    <p className="text-[10px] text-white/40 uppercase">Namlik</p>
-                    <p className="text-2xl font-black">{analysisResult.weather.avg_humidity}%</p>
+                    <p className="text-[10px] text-white/40 uppercase">
+                      Namlik
+                    </p>
+                    <p className="text-2xl font-black">
+                      {analysisResult.weather.avg_humidity}%
+                    </p>
                   </div>
                 </div>
 
@@ -699,12 +809,39 @@ export function FieldPage() {
                   <div className="h-48 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={analysisResult.weather.monthly}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                        <XAxis dataKey="month" fontSize={10} stroke="rgba(255,255,255,0.3)" tickFormatter={(v) => v.split("-")[1]} />
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          stroke="rgba(255,255,255,0.05)"
+                        />
+                        <XAxis
+                          dataKey="month"
+                          fontSize={10}
+                          stroke="rgba(255,255,255,0.3)"
+                          tickFormatter={(v) => v.split("-")[1]}
+                        />
                         <YAxis fontSize={10} stroke="rgba(255,255,255,0.3)" />
-                        <Tooltip contentStyle={{ backgroundColor: "#1e293b", border: "none", borderRadius: "8px", fontSize: "10px" }} />
-                        <Line type="monotone" dataKey="precip" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3, fill: "#3b82f6" }} />
-                        <Line type="monotone" dataKey="temp" stroke="#f97316" strokeWidth={2} dot={{ r: 3, fill: "#f97316" }} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "#1e293b",
+                            border: "none",
+                            borderRadius: "8px",
+                            fontSize: "10px",
+                          }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="precip"
+                          stroke="#3b82f6"
+                          strokeWidth={2}
+                          dot={{ r: 3, fill: "#3b82f6" }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="temp"
+                          stroke="#f97316"
+                          strokeWidth={2}
+                          dot={{ r: 3, fill: "#f97316" }}
+                        />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
@@ -713,7 +850,9 @@ export function FieldPage() {
             ) : (
               <div className="flex flex-col items-center justify-center py-20 text-center opacity-40">
                 <Map className="w-8 h-8 mb-4" />
-                <p className="text-xs font-medium">Ma'lumotlar yuklanmoqda...</p>
+                <p className="text-xs font-medium">
+                  Ma'lumotlar yuklanmoqda...
+                </p>
               </div>
             )}
           </div>
@@ -731,7 +870,9 @@ export function FieldPage() {
                     </div>
                     <div>
                       <h3 className="font-bold text-lg">AI Xulosa</h3>
-                      <p className="text-[10px] text-white/40 uppercase tracking-widest">{analysisResult.source}</p>
+                      <p className="text-[10px] text-white/40 uppercase tracking-widest">
+                        {analysisResult.source}
+                      </p>
                     </div>
                   </div>
                   <p className="text-sm leading-relaxed text-white/80 italic">
@@ -744,42 +885,66 @@ export function FieldPage() {
                   <div className="bg-[#1e293b] rounded-xl p-4 border border-white/5">
                     <div className="flex items-center gap-2 mb-2">
                       <Sprout className="w-4 h-4 text-green-500" />
-                      <span className="text-xs font-bold uppercase tracking-wider">O'simlik holati</span>
+                      <span className="text-xs font-bold uppercase tracking-wider">
+                        O'simlik holati
+                      </span>
                     </div>
-                    <p className="text-xs text-white/60 leading-relaxed">{analysisResult.analysis.osimlik_holati}</p>
+                    <p className="text-xs text-white/60 leading-relaxed">
+                      {analysisResult.analysis.osimlik_holati}
+                    </p>
                   </div>
                   <div className="bg-[#1e293b] rounded-xl p-4 border border-white/5">
                     <div className="flex items-center gap-2 mb-2">
                       <Map className="w-4 h-4 text-orange-500" />
-                      <span className="text-xs font-bold uppercase tracking-wider">Tuproq tahlili</span>
+                      <span className="text-xs font-bold uppercase tracking-wider">
+                        Tuproq tahlili
+                      </span>
                     </div>
-                    <p className="text-xs text-white/60 leading-relaxed">{analysisResult.analysis.tuproq_tahlili}</p>
+                    <p className="text-xs text-white/60 leading-relaxed">
+                      {analysisResult.analysis.tuproq_tahlili}
+                    </p>
                   </div>
                 </div>
 
                 {/* Priority Actions */}
                 <div>
-                  <h4 className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-3 px-1">Ustuvor harakatlar</h4>
+                  <h4 className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-3 px-1">
+                    Ustuvor harakatlar
+                  </h4>
                   <div className="flex flex-col gap-2">
-                    {analysisResult.analysis.ustuvor_harakatlar?.map((item: string, i: number) => (
-                      <div key={i} className="bg-white/5 rounded-xl p-3 flex items-start gap-3 border border-white/5">
-                        <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center text-[10px] font-bold text-blue-500 flex-shrink-0 mt-0.5">{i + 1}</div>
-                        <p className="text-xs text-white/80">{item}</p>
-                      </div>
-                    ))}
+                    {analysisResult.analysis.ustuvor_harakatlar?.map(
+                      (item: string, i: number) => (
+                        <div
+                          key={i}
+                          className="bg-white/5 rounded-xl p-3 flex items-start gap-3 border border-white/5"
+                        >
+                          <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center text-[10px] font-bold text-blue-500 flex-shrink-0 mt-0.5">
+                            {i + 1}
+                          </div>
+                          <p className="text-xs text-white/80">{item}</p>
+                        </div>
+                      ),
+                    )}
                   </div>
                 </div>
 
                 {/* Risks */}
                 <div>
-                  <h4 className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-3 px-1">Mumkin bo'lgan xavflar</h4>
+                  <h4 className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-3 px-1">
+                    Mumkin bo'lgan xavflar
+                  </h4>
                   <div className="flex flex-col gap-2">
-                    {analysisResult.analysis.xavflar?.map((item: string, i: number) => (
-                      <div key={i} className="bg-red-500/5 rounded-xl p-3 flex items-start gap-3 border border-red-500/10">
-                        <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                        <p className="text-xs text-white/80">{item}</p>
-                      </div>
-                    ))}
+                    {analysisResult.analysis.xavflar?.map(
+                      (item: string, i: number) => (
+                        <div
+                          key={i}
+                          className="bg-red-500/5 rounded-xl p-3 flex items-start gap-3 border border-red-500/10"
+                        >
+                          <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                          <p className="text-xs text-white/80">{item}</p>
+                        </div>
+                      ),
+                    )}
                   </div>
                 </div>
 
@@ -787,15 +952,22 @@ export function FieldPage() {
                 <div className="bg-[#1e293b] rounded-2xl p-5 border border-white/5">
                   <div className="flex items-center gap-2 mb-4">
                     <Lightbulb className="w-4 h-4 text-yellow-500" />
-                    <span className="text-xs font-bold uppercase tracking-wider">Dehqonchilik maslahatlari</span>
+                    <span className="text-xs font-bold uppercase tracking-wider">
+                      Dehqonchilik maslahatlari
+                    </span>
                   </div>
                   <ul className="space-y-3">
-                    {analysisResult.analysis.dehqonchilik_maslahati?.map((item: string, i: number) => (
-                      <li key={i} className="text-xs text-white/60 flex gap-2">
-                        <span className="text-yellow-500 mt-1">•</span>
-                        {item}
-                      </li>
-                    ))}
+                    {analysisResult.analysis.dehqonchilik_maslahati?.map(
+                      (item: string, i: number) => (
+                        <li
+                          key={i}
+                          className="text-xs text-white/60 flex gap-2"
+                        >
+                          <span className="text-yellow-500 mt-1">•</span>
+                          {item}
+                        </li>
+                      ),
+                    )}
                   </ul>
                 </div>
               </div>
@@ -943,10 +1115,12 @@ export function FieldPage() {
               setShowNameDialog(false);
               pendingFieldRef.current = null;
             }}
+            crop={crop}
+            onCropChange={setCrop}
           />
         )}
-        <div className="flex h-screen overflow-hidden bg-[#0f172a]">
-          {historySidebar}
+        <div className="flex h-screen overflow-hidden bg-white">
+          {fieldsSidebar}
           <div className="flex-1 flex flex-col min-w-0 relative">
             <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
               <button
@@ -1001,6 +1175,8 @@ export function FieldPage() {
             setShowNameDialog(false);
             pendingFieldRef.current = null;
           }}
+          crop={crop}
+          onCropChange={setCrop}
         />
       )}
       <div className="flex flex-col h-full overflow-hidden">
