@@ -267,7 +267,7 @@ export const MapboxFieldMap = forwardRef<
         const data = drawInstance.getAll();
         // During drawing, the active feature is a LineString
         const lines = data.features.filter(
-          (f) => f.geometry.type === "LineString",
+          (f: GeoJSON.Feature) => f.geometry.type === "LineString",
         );
         if (lines.length > 0) {
           const coords = (lines[0].geometry as GeoJSON.LineString).coordinates;
