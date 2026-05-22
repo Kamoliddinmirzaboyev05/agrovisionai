@@ -44,9 +44,20 @@ export default defineConfig({
     strictPort: false, // Allows 3001, 3002 if 3000 is occupied
     proxy: {
       "/api": {
-        target: "http://localhost:8000",
+        target: "http://127.0.0.1:8000",
         changeOrigin: true,
         secure: false,
+        // Django checks the Origin header for CSRF protection.
+        // During development, we can spoof it to match the target.
+        configure: (proxy, _options) => {
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            const origin = req.headers.origin;
+            if (origin) {
+              proxyReq.setHeader('Origin', 'http://127.0.0.1:8000');
+              proxyReq.setHeader('Referer', 'http://127.0.0.1:8000/');
+            }
+          });
+        },
       },
     },
     // Removed fixed HMR port to let Vite handle it automatically based on server port

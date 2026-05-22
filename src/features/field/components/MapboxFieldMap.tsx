@@ -202,50 +202,67 @@ export const MapboxFieldMap = forwardRef<
       );
       mapInstance.addControl(new mapboxgl.FullscreenControl(), "top-right");
 
-      // ── GeolocateControl — most reliable cross-platform location ──
+      // ── GeolocateControl — robust cross-platform location ──
+      let geolocateErrorCount = 0;
       const geolocate = new mapboxgl.GeolocateControl({
         positionOptions: {
-          enableHighAccuracy: true,
-          timeout: 20000,
-          maximumAge: 0,
+          enableHighAccuracy: false, // Start with low accuracy (works better on mobile/indoors)
+          timeout: 10000,
+          maximumAge: 30000, // Allow caching
         },
         trackUserLocation: true,
         showUserHeading: true,
         showAccuracyCircle: true,
         fitBoundsOptions: { 
-          zoom: 18, 
-          duration: 2500,
-          maxZoom: 20 
+          zoom: 15, 
+          duration: 1500,
         },
       });
 
       mapInstance.addControl(geolocate, "top-right");
 
       geolocate.on("geolocate", (pos: any) => {
+        // Reset error count on success
+        geolocateErrorCount = 0;
         const { accuracy } = pos.coords;
-        console.log("Accuracy:", accuracy);
+        
+        // If accuracy is poor (< 100m), try high accuracy next time
+        const statusMsg = accuracy < 20 
+          ? "Joylashuvingiz aniqlandi (Yuqori aniqlik)" 
+          : accuracy < 100
+            ? "Joylashuvingiz aniqlandi"
+            : "Joylashuvingiz taxminan aniqlandi";
         
         setLocationStatus({
           type: "success",
-          message: accuracy < 20 
-            ? "Joylashuvingiz aniqlandi (Yuqori aniqlik)" 
-            : "Joylashuvingiz aniqlandi",
+          message: statusMsg,
         });
-        setTimeout(() => setLocationStatus({ type: null, message: "" }), 4000);
+        setTimeout(() => setLocationStatus({ type: null, message: "" }), 3000);
       });
 
       geolocate.on("error", (e: { code: number; message: string }) => {
-        console.error("Geolocate error:", e);
-        const msgs: Record<number, string> = {
-          1: "Joylashuvga ruxsat berilmadi. Brauzer sozlamalarini tekshiring.",
-          2: "Joylashuvni aniqlab bo'mladi. Internet yoki GPS ni tekshiring.",
-          3: "Joylashuvni aniqlash vaqti tugadi. Qayta urinib ko'ring.",
-        };
-        setLocationStatus({
-          type: "error",
-          message: msgs[e.code] ?? "Joylashuvni aniqlab bo'mladi",
-        });
-        setTimeout(() => setLocationStatus({ type: null, message: "" }), 5000);
+        geolocateErrorCount++;
+        // Only log to console if it's a permission issue (code 1)
+        if (e.code === 1) {
+          console.warn("Geolocation permission denied");
+          setLocationStatus({
+            type: "error",
+            message: "Joylashuvga ruxsat berilmadi. Brauzer sozlamalarini tekshiring.",
+          });
+          setTimeout(() => setLocationStatus({ type: null, message: "" }), 5000);
+        }
+        // For POSITION_UNAVAILABLE (code 2) and TIMEOUT (code 3), 
+        // retry silently once after a delay
+        if (e.code !== 1 && geolocateErrorCount < 2 && map.current) {
+          // Don't spam errors for transient GPS issues
+          setTimeout(() => {
+            try {
+              geolocate.trigger();
+            } catch {
+              // Silently fail on retry trigger
+            }
+          }, 3000);
+        }
       });
 
       // Save geolocate control to ref if we want to trigger it from custom button

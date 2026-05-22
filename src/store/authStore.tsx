@@ -1,5 +1,6 @@
 import { createContext, useContext, useReducer, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import type { User, AuthState } from '@/types';
+import { getCookie, ensureCsrfToken } from '@/lib/api';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -37,15 +38,6 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
 
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function getCookie(name: string): string | null {
-  const value = `; ${document.cookie}`;
-  const parts = value.split(`; ${name}=`);
-  if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
-  return null;
-}
-
 // ── Provider ───────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -55,11 +47,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading: true,
   });
 
+
   // Check auth on mount
   useEffect(() => {
     let isMounted = true;
     const checkAuth = async () => {
       try {
+        // First ensure CSRF cookie is set
+        await ensureCsrfToken();
+        
         const res = await fetch(`${API_BASE}/me/`, {
           credentials: 'include',
         });
@@ -92,7 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (username: string, password: string): Promise<void> => {
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
-      const csrftoken = getCookie('csrftoken');
+      // Ensure CSRF token is available before making the POST request
+      const csrftoken = await ensureCsrfToken();
       const res = await fetch(`${API_BASE}/login/`, {
         method: 'POST',
         headers: { 
@@ -104,12 +101,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || err.message || 'Login xatosi');
+        let errorMsg = 'Login xatosi';
+        try {
+          const err = await res.json();
+          errorMsg = err.detail || err.message || err.error || errorMsg;
+        } catch {
+          const text = await res.text().catch(() => '');
+          if (text) errorMsg = text;
+        }
+        throw new Error(errorMsg);
       }
 
       const meRes = await fetch(`${API_BASE}/me/`, { credentials: 'include' });
-      const meData = await meRes.json();
+      let meData;
+      try {
+        meData = await meRes.json();
+      } catch {
+        throw new Error('Foydalanuvchi ma\'lumotlarini olishda xatolik');
+      }
       
       if (meData.authenticated && meData.user) {
         dispatch({ type: 'LOGIN_SUCCESS', payload: meData.user });
@@ -125,7 +134,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = useCallback(async (first_name: string, username: string, email: string, password: string): Promise<void> => {
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
-      const csrftoken = getCookie('csrftoken');
+      // Ensure CSRF token is available before making the POST request
+      const csrftoken = await ensureCsrfToken();
       const res = await fetch(`${API_BASE}/register/`, {
         method: 'POST',
         headers: { 
@@ -137,12 +147,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || err.message || 'Ro\'yxatdan o\'tish xatosi');
+        let errorMsg = 'Ro\'yxatdan o\'tish xatosi';
+        try {
+          const err = await res.json();
+          errorMsg = err.detail || err.message || err.error || errorMsg;
+        } catch {
+          const text = await res.text().catch(() => '');
+          if (text) errorMsg = text;
+        }
+        throw new Error(errorMsg);
       }
 
       const meRes = await fetch(`${API_BASE}/me/`, { credentials: 'include' });
-      const meData = await meRes.json();
+      let meData;
+      try {
+        meData = await meRes.json();
+      } catch {
+        throw new Error('Foydalanuvchi ma\'lumotlarini olishda xatolik');
+      }
       
       if (meData.authenticated && meData.user) {
         dispatch({ type: 'LOGIN_SUCCESS', payload: meData.user });
