@@ -39,9 +39,9 @@ export default defineConfig({
   assetsInclude: ["**/*.svg", "**/*.csv"],
 
   server: {
-    host: "localhost",
-    port: 5173,
-    strictPort: true,
+    host: true, // Listen on all addresses
+    port: 3000,
+    strictPort: false, // Allows 3001, 3002 if 3000 is occupied
     proxy: {
       "/api": {
         target: "http://localhost:8000",
@@ -49,11 +49,16 @@ export default defineConfig({
         secure: false,
       },
     },
+    // Removed fixed HMR port to let Vite handle it automatically based on server port
     hmr: {
-      protocol: "ws",
-      host: "localhost",
-      port: 5173,
-      clientPort: 5173,
+      overlay: true,
     },
+    // Optimizing for development speed and preventing some caching issues
+    watch: {
+      usePolling: true,
+    },
+  },
+  optimizeDeps: {
+    force: true, // Forces dependency pre-bundling on every start
   },
 });

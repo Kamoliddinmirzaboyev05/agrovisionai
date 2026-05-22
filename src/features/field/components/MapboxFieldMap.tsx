@@ -293,7 +293,12 @@ export const MapboxFieldMap = forwardRef<
               ["!=", "mode", "static"],
             ],
             paint: {
-              "circle-radius": 7,
+              "circle-radius": [
+                "case",
+                ["==", ["get", "parent"], "undefined"], // This often indicates the first point in some versions
+                9,
+                7
+              ],
               "circle-color": "#16a34a",
               "circle-stroke-color": "#fff",
               "circle-stroke-width": 2.5,
@@ -344,22 +349,50 @@ export const MapboxFieldMap = forwardRef<
         }
       });
 
-      mapInstance.on("draw.create", () => {
+      mapInstance.on("draw.render", () => {
+        const data = drawInstance.getAll();
+        if (data.features.length > 0) {
+          const feature = data.features[0];
+          if (feature.geometry.type === "LineString") {
+            setVertexCount(feature.geometry.coordinates.length);
+          } else if (feature.geometry.type === "Polygon") {
+            setVertexCount(feature.geometry.coordinates[0].length - 1);
+          }
+        }
+      });
+
+      mapInstance.on("draw.create", (e) => {
         const data = drawInstance.getAll();
         if (!data || data.features.length === 0) return;
+        
+        // Ensure only one feature exists
         if (data.features.length > 1) {
           const last = data.features[data.features.length - 1];
           drawInstance.deleteAll();
           drawInstance.add(last);
         }
-        const feature = drawInstance.getAll()
-          .features[0] as GeoJSON.Feature<GeoJSON.Polygon>;
+
+        const feature = drawInstance.getAll().features[0] as GeoJSON.Feature<GeoJSON.Polygon>;
+        
+        // Basic validation: ensure it's a valid polygon with at least 4 points (first and last are same)
+        if (feature.geometry.coordinates[0].length < 4) {
+          console.warn("Invalid polygon created, deleting...");
+          drawInstance.deleteAll();
+          return;
+        }
+
         historyRef.current = [feature.geometry.coordinates[0]];
         computeArea(feature);
         setHasActive(true);
         setDrawMode("idle");
         setVertexCount(0);
-        setTimeout(() => drawInstance.changeMode("simple_select"), 50);
+        
+        // Small delay to ensure render is done
+        setTimeout(() => {
+          if (drawInstance.getMode() !== "direct_select") {
+            drawInstance.changeMode("simple_select");
+          }
+        }, 100);
       });
 
       mapInstance.on("draw.update", () => {
@@ -381,12 +414,17 @@ export const MapboxFieldMap = forwardRef<
       });
 
       mapInstance.on("draw.modechange", (e: { mode: string }) => {
-        if (e.mode === "draw_polygon") setDrawMode("drawing");
-        else if (e.mode === "direct_select") setDrawMode("editing");
-        else
-          setDrawMode((prev) =>
-            prev === "drawing" || prev === "editing" ? "idle" : prev,
-          );
+        if (e.mode === "draw_polygon") {
+          setDrawMode("drawing");
+        } else if (e.mode === "direct_select" || e.mode === "simple_select") {
+          const data = drawInstance.getAll();
+          if (data.features.length > 0) {
+            setDrawMode("idle"); // Keep existing polygon visible
+          } else {
+            setDrawMode("idle");
+            setVertexCount(0);
+          }
+        }
       });
 
       mapInstance.on("mousemove", (e) => {
@@ -570,13 +608,44 @@ export const MapboxFieldMap = forwardRef<
     // ── Finish drawing ──
     const handleFinishDrawing = useCallback(() => {
       if (!draw.current || draw.current.getMode() !== "draw_polygon") return;
-      draw.current.changeMode("simple_select");
+      
       const data = draw.current.getAll();
-      if (data.features.length === 0) {
+      const drawFeature = data.features.find(f => f.geometry.type === 'LineString');
+      
+      if (drawFeature && drawFeature.geometry.type === 'LineString') {
+        const coords = drawFeature.geometry.coordinates;
+        if (coords.length >= 3) {
+          // Programmatically close the polygon
+          const closedCoords = [...coords, coords[0]];
+          const newPolygon: GeoJSON.Feature<GeoJSON.Polygon> = {
+            type: "Feature",
+            properties: {},
+            geometry: {
+              type: "Polygon",
+              coordinates: [closedCoords]
+            }
+          };
+          
+          draw.current.deleteAll();
+          draw.current.add(newPolygon);
+          
+          // Trigger the create logic manually since deleteAll/add might not fire draw.create
+          historyRef.current = [closedCoords];
+          computeArea(newPolygon);
+          setHasActive(true);
+          setDrawMode("idle");
+          setVertexCount(0);
+          setTimeout(() => draw.current?.changeMode("simple_select"), 100);
+          return;
+        }
+      }
+      
+      draw.current.changeMode("simple_select");
+      if (draw.current.getAll().features.length === 0) {
         setDrawMode("idle");
         setVertexCount(0);
       }
-    }, []);
+    }, [computeArea]);
 
     // ── Cancel drawing ──
     const handleCancelDrawing = useCallback(() => {

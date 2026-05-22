@@ -39,6 +39,14 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function getCookie(name: string): string | null {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(";").shift() || null;
+  return null;
+}
+
 // ── API helpers ──────────────────────────────────────────────────────────────
 const API_BASE = "/api/satellite/fields/";
 
@@ -139,15 +147,23 @@ export function FieldPage() {
     try {
       const url = editingFieldId ? `${API_BASE}${editingFieldId}/` : API_BASE;
       const method = editingFieldId ? "PATCH" : "POST";
+      const csrftoken = getCookie("csrftoken");
 
       const res = await fetch(url, {
         method,
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(csrftoken ? { "X-CSRFToken": csrftoken } : {}),
+        },
         body: JSON.stringify(payload),
         credentials: "include",
       });
       
-      if (!res.ok) throw new Error("Field saqlashda xatolik");
+      if (!res.ok) {
+        const err = await res.json();
+        console.error("Field save error details:", err);
+        throw new Error(err.detail || err.message || "Field saqlashda xatolik");
+      }
       
       const savedField: SavedField = await res.json();
       
@@ -210,8 +226,12 @@ export function FieldPage() {
   const handleDeleteField = async (id: number) => {
     if (!confirm("Haqiqatan ham ushbu dalani o'chirmoqchimisiz?")) return;
     try {
+      const csrftoken = getCookie("csrftoken");
       const res = await fetch(`${API_BASE}${id}/`, { 
         method: "DELETE",
+        headers: {
+          ...(csrftoken ? { "X-CSRFToken": csrftoken } : {}),
+        },
         credentials: "include" 
       });
       if (!res.ok) throw new Error("O'chirishda xatolik");
@@ -236,6 +256,7 @@ export function FieldPage() {
     if (!activeField) return;
     try {
       setIsAnalyzing(true);
+      const csrftoken = getCookie("csrftoken");
       const payload = {
         coordinates: activeField.coordinates,
         area_ha: activeField.area_ha,
@@ -244,7 +265,10 @@ export function FieldPage() {
       };
       const res = await fetch("/api/satellite/analyze/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...(csrftoken ? { "X-CSRFToken": csrftoken } : {}),
+        },
         body: JSON.stringify(payload),
         credentials: "include",
       });
@@ -295,12 +319,43 @@ export function FieldPage() {
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
               <p className="text-xs font-semibold text-blue-900 mb-2">
                 📍 Qanday qilib:
-              </p>
-              <ol className="text-xs text-blue-700 space-y-1">
-                <li>1. Xaritada nuqtalarni belgilang</li>
-                <li>2. Hudud yopilgach birinchi nuqtaga bosing</li>
-                <li>3. Maydon ma'lumotlarini to'ldiring</li>
-                <li>4. "Saqlash" tugmasini bosing</li>
+Men React + Vite + TypeScript arxitekturasida loyiha ishlab chiqyapman. Hozirda brauzer konsolida jiddiy xatolik yuzaga kelyapti, loyiha qotib qolyapti va faqat "Hard Refresh" qilgandagina vaqtincha ishlab ketyapti. Muammoning asosiy ildizi React Hooks qoidalarining buzilishi va Vite HMR ulanishidagi xatolik bilan bog'liq deb o'ylayapman.
+
+Sizdan ushbu muammoni ildizi bilan hal qilishni, arxitekturaviy xatoni tushuntirishni va kodni qayta yozib berishni so'rayman.
+
+Mana konsolda chiqayotgan asosiy xatoliklar:
+1. "Uncaught TypeError: Cannot read properties of null (reading 'useReducer') at AuthProvider (authStore.ts:43:29)"
+2. "Warning: Invalid hook call. Hooks can only be called inside of the body of a function component."
+3. "[vite] failed to connect to websocket (Error: WebSocket closed without opened.)"
+
+Mening hozirgi `src/store/authStore.ts` (yoki auth provider joylashgan fayl) kodim quyidagicha:
+[BU ERGA `authStore.ts` FAYLIDAGI BARCHA KODNI JOYLASHTIRING]
+
+Ushbu loyihada `AuthProvider` komponenti `AppRouter` yoki `App.tsx` ichida qanday o'ralganini ko'rsatuvchi kod qismi:
+[BU ERGA `App.tsx` YOKI `main.tsx` ICHIDAGI PROVIDER O'RALGAN QISMINI JOYLASHTIRING]
+
+Sizdan quyidagilarni bajarishingizni so'rayman:
+1. **Muammoning aniq tahlili:** Nima sababdan `useReducer` null qiymat o'qiyapti? Men React Hooks qoidasini aynan qaysi satrda va qanday buzganman?
+2. **Kodni to'g'rilash:** Yuqoridagi `authStore.ts` kodini React va TypeScript qoidalariga moslab, xatosiz, eng mukammal ko'rinishda qayta yozib bering.
+3. **Vite muammosi yechimi:** Vite WebSocket ulanishi (HMR) uzilib qolayotgani va loyiha keshlanib qolayotgani uchun `vite.config.ts` yoki paketlar darajasida nimalarni o'zgartirishim kerak?
+4. **Profilaktika:** Kelajakda React loyihalarida bunday "Invalid hook call" xatolariga qayta duch kelmasligim uchun qanday oltin qoidalarga amal qilishim kerak?              </p>
+              <ol className="text-xs text-blue-700 space-y-1.5">
+                <li className="flex gap-2">
+                  <span className="font-bold">1.</span>
+                  <span>Xaritada nuqtalarni belgilang</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="font-bold">2.</span>
+                  <span>Kamida 3 ta nuqta bo'lgach, "Tugatish" tugmasini bosing yoki birinchi nuqtaga bosing</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="font-bold">3.</span>
+                  <span>Maydon nomi va ekin turini kiriting</span>
+                </li>
+                <li className="flex gap-2 text-primary font-bold">
+                  <span>4.</span>
+                  <span>"Saqlash" tugmasini bosing</span>
+                </li>
               </ol>
             </div>
 

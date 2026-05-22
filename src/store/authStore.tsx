@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useEffect, type ReactNode, createElement } from 'react';
+import { createContext, useContext, useReducer, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import type { User, AuthState } from '@/types';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -23,9 +23,9 @@ const API_BASE = '/api/auth';
 function authReducer(state: AuthState, action: AuthAction): AuthState {
   switch (action.type) {
     case 'LOGIN_SUCCESS':
-      return { user: action.payload, isAuthenticated: true, isLoading: false };
+      return { ...state, user: action.payload, isAuthenticated: true, isLoading: false };
     case 'LOGOUT':
-      return { user: null, isAuthenticated: false, isLoading: false };
+      return { ...state, user: null, isAuthenticated: false, isLoading: false };
     case 'SET_LOADING':
       return { ...state, isLoading: action.payload };
     default:
@@ -35,7 +35,7 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
 
 // ── Context ────────────────────────────────────────────────────────────────────
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -48,7 +48,7 @@ function getCookie(name: string): string | null {
 
 // ── Provider ───────────────────────────────────────────────────────────────────
 
-function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(authReducer, {
     user: null,
     isAuthenticated: false,
@@ -57,16 +57,20 @@ function AuthProvider({ children }: { children: ReactNode }) {
 
   // Check auth on mount
   useEffect(() => {
+    let isMounted = true;
     const checkAuth = async () => {
       try {
         const res = await fetch(`${API_BASE}/me/`, {
           credentials: 'include',
         });
+        
+        if (!isMounted) return;
+
         if (res.status === 404) {
-          console.warn('Auth check endpoint not found (404)');
           dispatch({ type: 'SET_LOADING', payload: false });
           return;
         }
+
         const data = await res.json();
         if (data.authenticated && data.user) {
           dispatch({ type: 'LOGIN_SUCCESS', payload: data.user });
@@ -74,14 +78,18 @@ function AuthProvider({ children }: { children: ReactNode }) {
           dispatch({ type: 'SET_LOADING', payload: false });
         }
       } catch (err) {
-        console.error('Auth check failed:', err);
-        dispatch({ type: 'SET_LOADING', payload: false });
+        if (isMounted) {
+          console.error('Auth check failed:', err);
+          dispatch({ type: 'SET_LOADING', payload: false });
+        }
       }
     };
+
     checkAuth();
+    return () => { isMounted = false; };
   }, []);
 
-  const login = async (username: string, password: string): Promise<void> => {
+  const login = useCallback(async (username: string, password: string): Promise<void> => {
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
       const csrftoken = getCookie('csrftoken');
@@ -97,15 +105,12 @@ function AuthProvider({ children }: { children: ReactNode }) {
       
       if (!res.ok) {
         const err = await res.json();
-        console.error('Login error details:', err);
         throw new Error(err.detail || err.message || 'Login xatosi');
       }
 
-      // After login, fetch user info
-      const meRes = await fetch(`${API_BASE}/me/`, {
-        credentials: 'include',
-      });
+      const meRes = await fetch(`${API_BASE}/me/`, { credentials: 'include' });
       const meData = await meRes.json();
+      
       if (meData.authenticated && meData.user) {
         dispatch({ type: 'LOGIN_SUCCESS', payload: meData.user });
       } else {
@@ -115,9 +120,9 @@ function AuthProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_LOADING', payload: false });
       throw err;
     }
-  };
+  }, []);
 
-  const register = async (first_name: string, username: string, email: string, password: string): Promise<void> => {
+  const register = useCallback(async (first_name: string, username: string, email: string, password: string): Promise<void> => {
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
       const csrftoken = getCookie('csrftoken');
@@ -133,15 +138,12 @@ function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!res.ok) {
         const err = await res.json();
-        console.error('Register error details:', err);
         throw new Error(err.detail || err.message || 'Ro\'yxatdan o\'tish xatosi');
       }
 
-      // After register, fetch user info
-      const meRes = await fetch(`${API_BASE}/me/`, {
-        credentials: 'include',
-      });
+      const meRes = await fetch(`${API_BASE}/me/`, { credentials: 'include' });
       const meData = await meRes.json();
+      
       if (meData.authenticated && meData.user) {
         dispatch({ type: 'LOGIN_SUCCESS', payload: meData.user });
       } else {
@@ -151,9 +153,9 @@ function AuthProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_LOADING', payload: false });
       throw err;
     }
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await fetch(`${API_BASE}/logout/`, { 
         method: 'POST',
@@ -164,17 +166,28 @@ function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       dispatch({ type: 'LOGOUT' });
     }
-  };
+  }, []);
 
-  return createElement(AuthContext.Provider, { value: { ...state, login, register, logout } }, children);
+  const value = useMemo(() => ({
+    ...state,
+    login,
+    register,
+    logout
+  }), [state, login, register, logout]);
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 // ── Hook ───────────────────────────────────────────────────────────────────────
 
-function useAuthContext(): AuthContextValue {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuthContext must be used within AuthProvider');
-  return ctx;
+export function useAuthContext(): AuthContextValue {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuthContext must be used within an AuthProvider');
+  }
+  return context;
 }
-
-export { AuthProvider, useAuthContext, AuthContext };
