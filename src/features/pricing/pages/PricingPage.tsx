@@ -1,6 +1,6 @@
 import { Check, Crown, MessageCircle, HelpCircle, Zap, ShieldCheck, Sprout } from "lucide-react";
 
-export default function PricingPage() {
+export function PricingPage() {
   const plans = [
     {
       name: "Bepul",

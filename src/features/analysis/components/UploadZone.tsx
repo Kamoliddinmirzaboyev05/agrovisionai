@@ -4,9 +4,10 @@ import { Camera, X } from 'lucide-react';
 interface UploadZoneProps {
   isDesktop?: boolean;
   onImageChange?: (url: string | null) => void;
+  onFileChange?: (file: File | null) => void;
 }
 
-export function UploadZone({ isDesktop, onImageChange }: UploadZoneProps) {
+export function UploadZone({ isDesktop, onImageChange, onFileChange }: UploadZoneProps) {
   const [image, setImage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -14,6 +15,7 @@ export function UploadZone({ isDesktop, onImageChange }: UploadZoneProps) {
     const url = URL.createObjectURL(f);
     setImage(url);
     onImageChange?.(url);
+    onFileChange?.(f);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -26,6 +28,7 @@ export function UploadZone({ isDesktop, onImageChange }: UploadZoneProps) {
     e.stopPropagation();
     setImage(null);
     onImageChange?.(null);
+    onFileChange?.(null);
   };
 
   return (

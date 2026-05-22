@@ -1,11 +1,12 @@
 
 import { api } from "@/lib/api";
-import type { SavedField, AnalysisResult } from "@/types";
+import type { SavedField, AnalysisResult, CropImageAnalysis } from "@/types";
 
 const ENDPOINTS = {
   FIELDS: "/api/satellite/fields/",
   ANALYZE: "/api/satellite/analyze/",
   HISTORY: "/api/satellite/history/",
+  CROP_IMAGE_ANALYZE: "/api/satellite/crop-images/analyze/",
 };
 
 export const fieldService = {
@@ -56,5 +57,16 @@ export const fieldService = {
    */
   getFieldHistory: (id: number) => {
     return api.get<AnalysisResult>(`${ENDPOINTS.HISTORY}${id}/`);
+  },
+
+  /**
+   * Ekin rasmini tahlil qilish (AI yordamida)
+   */
+  analyzeCropImage: (image: File, fieldId?: number) => {
+    const formData = new FormData();
+    formData.append("image", image);
+    if (fieldId) formData.append("field", fieldId.toString());
+
+    return api.post<CropImageAnalysis>(ENDPOINTS.CROP_IMAGE_ANALYZE, formData);
   },
 };

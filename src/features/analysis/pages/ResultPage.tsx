@@ -10,10 +10,15 @@ import {
   AlertCircle,
   Eye,
   Info,
+  CheckCircle2,
+  Stethoscope,
+  ShieldCheck,
+  Zap,
 } from "lucide-react";
 import { MetricCard } from "../components/MetricCard";
 import { useIsMobile } from "@/hooks/useIsMobile";
-import type { FieldData, AnalysisResult } from "@/types";
+import { useLocation } from "react-router";
+import type { FieldData, AnalysisResult, CropImageAnalysis } from "@/types";
 import { calcArea } from "@/features/field/utils/calcArea";
 
 interface Recommendation {
@@ -26,11 +31,11 @@ interface Recommendation {
 function getAnalysisData() {
   const rawField = sessionStorage.getItem("fieldData");
   const rawResult = sessionStorage.getItem("analysisResult");
+  const rawCropResult = sessionStorage.getItem("cropAnalysisResult");
 
   const fieldData: FieldData | null = rawField ? JSON.parse(rawField) : null;
-  const analysisResult: AnalysisResult | null = rawResult
-    ? JSON.parse(rawResult)
-    : null;
+  const analysisResult: AnalysisResult | null = rawResult ? JSON.parse(rawResult) : null;
+  const cropResult: CropImageAnalysis | null = rawCropResult ? JSON.parse(rawCropResult) : null;
 
   const a = fieldData ? calcArea(fieldData.points) : { sotix: 0 };
   const area = a.sotix > 0 ? `${a.sotix} sotix` : "";
@@ -39,15 +44,22 @@ function getAnalysisData() {
     fieldData,
     area,
     result: analysisResult,
+    cropResult,
   };
 }
 
 export function ResultPage() {
   const isMobile = useIsMobile();
-  const [tab, setTab] = useState<"overview" | "recommendations">("overview");
-  const { fieldData, area, result } = getAnalysisData();
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const isCropAnalysis = queryParams.get("type") === "crop";
 
-  if (!result) {
+  const [tab, setTab] = useState<"overview" | "recommendations">("overview");
+  const { fieldData, area, result, cropResult } = getAnalysisData();
+
+  const data = isCropAnalysis ? cropResult : result;
+
+  if (!data) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8 text-center gap-4">
         <AlertCircle className="w-12 h-12 text-amber-500" />
@@ -59,35 +71,171 @@ export function ResultPage() {
     );
   }
 
-  // Mapping backend data to UI
+  // --- Image-based Crop Analysis UI ---
+  if (isCropAnalysis && cropResult) {
+    const mainDisease = cropResult.diseases[0];
+    
+    const cropStatusBanner = (
+      <div className={`rounded-3xl p-6 text-white shadow-xl bg-gradient-to-br ${
+        cropResult.health_status === 'healthy' ? 'from-green-500 to-emerald-600' : 'from-red-500 to-rose-600'
+      }`}>
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-xs font-black uppercase tracking-widest opacity-80">Ekin Sog'lig'i</p>
+          <div className="bg-white/20 px-4 py-1.5 rounded-full text-xs font-black flex items-center gap-2">
+            {cropResult.health_status === 'healthy' ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+            {cropResult.health_status === 'healthy' ? "SOG'LOM" : "KASALLIK ANIQLANDI"}
+          </div>
+        </div>
+        <h2 className="text-2xl font-black mb-2">{mainDisease?.name.replace(/___|_/g, ' ') || "Sog'lom ekin"}</h2>
+        <p className="text-sm leading-relaxed opacity-90 font-medium">
+          Aniqlik darajasi: {(cropResult.confidence * 100).toFixed(1)}%
+        </p>
+      </div>
+    );
+
+    const cropMetrics = (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white rounded-3xl p-6 border border-border shadow-sm">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-amber-50 rounded-2xl flex items-center justify-center">
+              <Eye className="w-5 h-5 text-amber-600" />
+            </div>
+            <h3 className="font-bold text-foreground">Alomatlar</h3>
+          </div>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {cropResult.analysis.symptoms}
+          </p>
+        </div>
+
+        <div className="bg-white rounded-3xl p-6 border border-border shadow-sm">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-blue-50 rounded-2xl flex items-center justify-center">
+              <Stethoscope className="w-5 h-5 text-blue-600" />
+            </div>
+            <h3 className="font-bold text-foreground">Davolash choralari</h3>
+          </div>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {cropResult.analysis.treatment}
+          </p>
+        </div>
+
+        <div className="bg-white rounded-3xl p-6 border border-border shadow-sm md:col-span-2">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-green-50 rounded-2xl flex items-center justify-center">
+              <ShieldCheck className="w-5 h-5 text-green-600" />
+            </div>
+            <h3 className="font-bold text-foreground">Oldini olish</h3>
+          </div>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {cropResult.analysis.prevention}
+          </p>
+        </div>
+      </div>
+    );
+
+    const cropRecommendations = (
+      <div className="space-y-3">
+        {cropResult.analysis.recommendations.map((rec, i) => (
+          <div key={i} className="bg-white rounded-2xl p-4 border border-border flex items-start gap-4 hover:border-primary/30 transition-colors">
+            <div className="w-8 h-8 bg-primary/10 rounded-xl flex items-center justify-center flex-shrink-0">
+              <Zap className="w-4 h-4 text-primary" />
+            </div>
+            <p className="text-sm font-bold text-foreground/80 leading-snug pt-1">{rec}</p>
+          </div>
+        ))}
+      </div>
+    );
+
+    if (!isMobile) {
+      return (
+        <div className="flex flex-col gap-6 p-8 max-w-6xl mx-auto w-full">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-black text-foreground uppercase tracking-tight">AI Rasm Tahlili</h2>
+              <p className="text-sm text-muted-foreground mt-1">Ekin holati bo'yicha batafsil hisobot</p>
+            </div>
+            <div className="flex items-center gap-4">
+              <img src={cropResult.image} className="w-20 h-20 rounded-2xl object-cover border-4 border-white shadow-xl" alt="Analyzed" />
+            </div>
+          </div>
+          {cropStatusBanner}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 space-y-6">
+              <h3 className="text-lg font-black text-foreground flex items-center gap-2">
+                <Activity className="w-5 h-5 text-primary" />
+                Tahlil natijalari
+              </h3>
+              {cropMetrics}
+            </div>
+            <div className="space-y-6">
+              <h3 className="text-lg font-black text-foreground flex items-center gap-2">
+                <Star className="w-5 h-5 text-amber-500" />
+                AI Tavsiyalar
+              </h3>
+              {cropRecommendations}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col h-full bg-gray-50/50">
+        <div className="p-4 space-y-6">
+          <div className="flex items-center gap-4">
+             <img src={cropResult.image} className="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-lg" alt="Analyzed" />
+             <div>
+               <h2 className="text-xl font-black text-foreground">AI Tahlili</h2>
+               <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Natija tayyor</p>
+             </div>
+          </div>
+          {cropStatusBanner}
+          
+          <div className="bg-muted rounded-2xl p-1 flex">
+            <button onClick={() => setTab("overview")} className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${tab === "overview" ? "bg-white text-primary shadow-sm" : "text-muted-foreground"}`}>Natija</button>
+            <button onClick={() => setTab("recommendations")} className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${tab === "recommendations" ? "bg-white text-primary shadow-sm" : "text-muted-foreground"}`}>Tavsiyalar</button>
+          </div>
+
+          <div className="pb-20">
+            {tab === "overview" ? cropMetrics : cropRecommendations}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Original Satellite-based Result UI ---
+  const resultData = result; // Safe to use directly if not null
+  if (!resultData) return null;
+
   const riskLevel =
-    result.risk_level ||
-    ((result.ndvi?.current || 0) < 0.2
+    resultData.risk_level ||
+    ((resultData.ndvi?.current || 0) < 0.2
       ? "high"
-      : (result.ndvi?.current || 0) < 0.5
+      : (resultData.ndvi?.current || 0) < 0.5
         ? "medium"
         : "low");
   const statusText =
-    result.status_text ||
-    result.analysis?.osimlik_holati ||
-    result.analysis?.xulosa ||
+    resultData.status_text ||
+    resultData.analysis?.osimlik_holati ||
+    resultData.analysis?.xulosa ||
     "Ma'lumot mavjud emas";
-  const ndviValue = result.ndvi?.current ?? 0;
-  const ndviChange = result.ndvi?.change ?? 0;
-  const droughtIndex = result.ndvi?.drought_index ?? 0;
+  const ndviValue = resultData.ndvi?.current ?? 0;
+  const ndviChange = resultData.ndvi?.change ?? 0;
+  const droughtIndex = resultData.ndvi?.drought_index ?? 0;
   const areaHa =
-    result.location?.area_ha ?? result.area_ha ?? (parseFloat(area) / 100 || 0);
+    resultData.location?.area_ha ?? resultData.area_ha ?? (parseFloat(area) / 100 || 0);
   const soilMoisture =
-    result.soil_moisture || (droughtIndex > 0.5 ? "Quruq" : "Nam");
-  const confidence = result.confidence || "---";
+    resultData.soil_moisture || (droughtIndex > 0.5 ? "Quruq" : "Nam");
+  const confidence = resultData.confidence || "---";
   const problem =
-    result.problem || result.analysis?.qurgochlik || "Aniqlanmadi";
+    resultData.problem || resultData.analysis?.yer_tahlili?.osimlik_holati || "Aniqlanmadi";
 
   const backendRecs: Recommendation[] =
     (
-      result.analysis?.ustuvor_harakatlar ||
-      result.analysis?.dehqonchilik_maslahati ||
-      result.recommendations
+      resultData.analysis?.ustuvor_harakatlar ||
+      (resultData.analysis as any)?.dehqonchilik_maslahati ||
+      resultData.recommendations
     )?.map((text: string, i: number) => {
       const icons = [AlertTriangle, Eye, Leaf, Droplets, Star, Info];
       const colors = [

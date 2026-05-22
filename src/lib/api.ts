@@ -89,8 +89,10 @@ async function request<T>(url: string, options: RequestOptions = {}): Promise<T>
 
   const csrftoken = getCookie("csrftoken");
   
+  const isFormData = rest.body instanceof FormData;
+  
   const defaultHeaders: Record<string, string> = {
-    "Content-Type": "application/json",
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(csrftoken ? { "X-CSRFToken": csrftoken } : {}),
   };
 

@@ -15,7 +15,7 @@ import { LoadingPage } from '@/features/analysis/pages/LoadingPage';
 import { ResultPage } from '@/features/analysis/pages/ResultPage';
 import { HistoryPage } from '@/features/history/pages/HistoryPage';
 import { ProfilePage } from '@/features/profile/pages/ProfilePage';
-import PricingPage from '@/features/pricing/pages/PricingPage';
+import { PricingPage } from '@/features/pricing/pages/PricingPage';
 import { ROUTES } from './routes';
 
 const router = createBrowserRouter([

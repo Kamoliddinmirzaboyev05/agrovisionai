@@ -237,4 +237,37 @@ export interface AnalysisResult {
   soil_data?: any;
   weather_data?: any;
   ai_analysis?: any;
+  risk_level?: RiskLevel;
+  status_text?: string;
+  soil_moisture?: string;
+  confidence?: string | number;
+  problem?: string;
+  recommendations?: string[];
+  temperature?: number;
+  weather_forecast?: string;
+}
+
+export interface DiseaseAnalysis {
+  name: string;
+  confidence: number;
+  severity: string;
+  symptoms: string;
+  treatment: string;
+}
+
+export interface CropImageAnalysis {
+  id: number;
+  field: number | null;
+  created_at: string;
+  image: string;
+  health_status: string;
+  diseases: DiseaseAnalysis[];
+  analysis: {
+    symptoms: string;
+    treatment: string;
+    prevention: string;
+    recommendations: string[];
+  };
+  confidence: number;
+  user: number | null;
 }
