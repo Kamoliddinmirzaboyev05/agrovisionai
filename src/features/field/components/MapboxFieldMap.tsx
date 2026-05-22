@@ -86,9 +86,26 @@ export const MapboxFieldMap = forwardRef<
       [onAreaChange, onPolygonChange],
     );
 
+    const computeAreaRef = useRef(computeArea);
+    useEffect(() => {
+      computeAreaRef.current = computeArea;
+    }, [computeArea]);
+
     useImperativeHandle(ref, () => ({
       startDrawing: () => {
-        if (!draw.current) return;
+        if (!draw.current || !mapReady) {
+          // If not ready, try again in a bit
+          if (!mapReady && map.current) {
+            const check = setInterval(() => {
+              if (map.current?.loaded()) {
+                setMapReady(true);
+                clearInterval(check);
+                draw.current?.changeMode("draw_polygon");
+              }
+            }, 100);
+          }
+          return;
+        }
         const data = draw.current.getAll();
         if (data.features.length > 0) {
           setDrawMode("editing");
@@ -103,22 +120,42 @@ export const MapboxFieldMap = forwardRef<
         }
       },
       setPolygonForEditing: (geojson: GeoJSON.Feature<GeoJSON.Polygon>) => {
-        if (!draw.current) return;
-        draw.current.deleteAll();
-        const ids = draw.current.add(geojson);
-        setDrawMode("editing");
-        setHasActive(true);
-        computeArea(geojson);
-        setTimeout(() => {
-          draw.current?.changeMode("direct_select", {
-            featureId: ids[0],
-          });
-        }, 100);
+        const attempt = (count: number) => {
+          if (draw.current && mapReady) {
+            draw.current.deleteAll();
+            const ids = draw.current.add(geojson);
+            setDrawMode("editing");
+            setHasActive(true);
+            computeAreaRef.current(geojson);
+            
+            // Ensure map focuses on the polygon
+            if (map.current) {
+              const bounds = new mapboxgl.LngLatBounds();
+              geojson.geometry.coordinates[0].forEach((coord) => {
+                bounds.extend(coord as [number, number]);
+              });
+              map.current.fitBounds(bounds, { padding: 50, duration: 1000 });
+            }
+
+            setTimeout(() => {
+              if (draw.current && ids.length > 0) {
+                draw.current.changeMode("direct_select", {
+                  featureId: ids[0],
+                });
+              }
+            }, 200);
+          } else if (count < 15) {
+            setTimeout(() => attempt(count + 1), 200);
+          }
+        };
+        attempt(0);
       },
       clearActive: () => {
         if (!draw.current) return;
         draw.current.deleteAll();
-        draw.current.changeMode("simple_select");
+        if (draw.current.getMode() !== "simple_select") {
+          draw.current.changeMode("simple_select");
+        }
         historyRef.current = [];
         setDrawMode("idle");
         setHasActive(false);
@@ -127,7 +164,7 @@ export const MapboxFieldMap = forwardRef<
         onAreaChange({ m2: 0, sotix: 0, hectare: 0 });
       },
       fitToFields: () => {
-        if (!map.current || savedFields.length === 0) return;
+        if (!map.current || !mapReady || savedFields.length === 0) return;
         const bounds = new mapboxgl.LngLatBounds();
         savedFields.forEach((f) => {
           f.coordinates.forEach(({ lat, lng }) =>
@@ -336,28 +373,19 @@ export const MapboxFieldMap = forwardRef<
       draw.current = drawInstance;
 
       mapInstance.on("draw.render", () => {
-        if (drawInstance.getMode() === "draw_polygon") {
-          const data = drawInstance.getAll();
-          const lines = data.features.filter(
-            (f: GeoJSON.Feature) => f.geometry.type === "LineString",
-          );
-          if (lines.length > 0) {
-            const coords = (lines[0].geometry as GeoJSON.LineString)
-              .coordinates;
-            setVertexCount(coords.length);
-          }
-        }
-      });
-
-      mapInstance.on("draw.render", () => {
+        const mode = drawInstance.getMode();
         const data = drawInstance.getAll();
+        
         if (data.features.length > 0) {
           const feature = data.features[0];
           if (feature.geometry.type === "LineString") {
             setVertexCount(feature.geometry.coordinates.length);
           } else if (feature.geometry.type === "Polygon") {
+            // For a closed polygon, the last coordinate is the same as the first
             setVertexCount(feature.geometry.coordinates[0].length - 1);
           }
+        } else {
+          setVertexCount(0);
         }
       });
 
@@ -365,31 +393,41 @@ export const MapboxFieldMap = forwardRef<
         const data = drawInstance.getAll();
         if (!data || data.features.length === 0) return;
         
-        // Ensure only one feature exists
+        // If somehow multiple features were created, keep only the latest one
         if (data.features.length > 1) {
-          const last = data.features[data.features.length - 1];
-          drawInstance.deleteAll();
-          drawInstance.add(last);
+          const features = data.features;
+          const lastId = features[features.length - 1].id;
+          const toDelete = features
+            .filter(f => f.id !== lastId)
+            .map(f => f.id as string);
+          
+          if (toDelete.length > 0) {
+            drawInstance.delete(toDelete);
+          }
         }
 
-        const feature = drawInstance.getAll().features[0] as GeoJSON.Feature<GeoJSON.Polygon>;
+        const currentFeatures = drawInstance.getAll().features;
+        if (currentFeatures.length === 0) return;
+        
+        const feature = currentFeatures[0] as GeoJSON.Feature<GeoJSON.Polygon>;
         
         // Basic validation: ensure it's a valid polygon with at least 4 points (first and last are same)
-        if (feature.geometry.coordinates[0].length < 4) {
+        if (feature.geometry.type === "Polygon" && feature.geometry.coordinates[0].length < 4) {
           console.warn("Invalid polygon created, deleting...");
-          drawInstance.deleteAll();
+          drawInstance.delete(feature.id as string);
           return;
         }
 
         historyRef.current = [feature.geometry.coordinates[0]];
-        computeArea(feature);
+        computeAreaRef.current(feature);
         setHasActive(true);
         setDrawMode("idle");
         setVertexCount(0);
         
         // Small delay to ensure render is done
         setTimeout(() => {
-          if (drawInstance.getMode() !== "direct_select") {
+          const currentMode = drawInstance.getMode();
+          if (currentMode !== "direct_select" && currentMode !== "simple_select") {
             drawInstance.changeMode("simple_select");
           }
         }, 100);
@@ -400,7 +438,7 @@ export const MapboxFieldMap = forwardRef<
         if (!data || data.features.length === 0) return;
         const feature = data.features[0] as GeoJSON.Feature<GeoJSON.Polygon>;
         historyRef.current.push(feature.geometry.coordinates[0]);
-        computeArea(feature);
+        computeAreaRef.current(feature);
         setHasActive(true);
       });
 
@@ -416,10 +454,12 @@ export const MapboxFieldMap = forwardRef<
       mapInstance.on("draw.modechange", (e: { mode: string }) => {
         if (e.mode === "draw_polygon") {
           setDrawMode("drawing");
-        } else if (e.mode === "direct_select" || e.mode === "simple_select") {
+        } else if (e.mode === "direct_select") {
+          setDrawMode("editing");
+        } else if (e.mode === "simple_select") {
           const data = drawInstance.getAll();
           if (data.features.length > 0) {
-            setDrawMode("idle"); // Keep existing polygon visible
+            setDrawMode("idle");
           } else {
             setDrawMode("idle");
             setVertexCount(0);
@@ -553,7 +593,9 @@ export const MapboxFieldMap = forwardRef<
           box-shadow: 0 2px 6px rgba(0,0,0,0.3);
           border: 2px solid ${isActive ? "#fff" : "rgba(255,255,255,0.6)"};
           cursor: pointer;
-          pointer-events: auto;
+          pointer-events: ${isDrawingMode || isEditingMode ? "none" : "auto"};
+          opacity: ${isDrawingMode || isEditingMode ? "0.5" : "1"};
+          transition: all 0.2s;
         `;
         el.textContent = f.name;
         el.addEventListener("click", () => onFieldClick?.(f.id));
@@ -563,7 +605,7 @@ export const MapboxFieldMap = forwardRef<
           .addTo(mapInstance);
         fieldMarkersRef.current.push(marker);
       });
-    }, [savedFields, activeFieldId, mapReady, onFieldClick]);
+    }, [savedFields, activeFieldId, mapReady, onFieldClick, drawMode]);
 
     // ── Map style switch ──
     useEffect(() => {
@@ -602,46 +644,68 @@ export const MapboxFieldMap = forwardRef<
         geometry: { type: "Polygon", coordinates: [prev] },
       };
       draw.current.add(newFeature);
-      computeArea(newFeature);
-    }, [computeArea]);
+      computeAreaRef.current(newFeature);
+    }, []);
 
     // ── Finish drawing ──
     const handleFinishDrawing = useCallback(() => {
-      if (!draw.current || draw.current.getMode() !== "draw_polygon") return;
+      if (!draw.current) return;
+      const mode = draw.current.getMode();
       
-      const data = draw.current.getAll();
-      const drawFeature = data.features.find(f => f.geometry.type === 'LineString');
-      
-      if (drawFeature && drawFeature.geometry.type === 'LineString') {
-        const coords = drawFeature.geometry.coordinates;
-        if (coords.length >= 3) {
-          // Programmatically close the polygon
-          const closedCoords = [...coords, coords[0]];
-          const newPolygon: GeoJSON.Feature<GeoJSON.Polygon> = {
-            type: "Feature",
-            properties: {},
-            geometry: {
-              type: "Polygon",
-              coordinates: [closedCoords]
+      if (mode === "draw_polygon") {
+        const data = draw.current.getAll();
+        // Mapbox Draw might have it as a LineString or a Polygon with open ring
+        const feature = data.features[0];
+        
+        if (feature) {
+          const coords = feature.geometry.type === 'LineString' 
+            ? feature.geometry.coordinates 
+            : (feature.geometry as any).coordinates[0];
+            
+          if (coords && coords.length >= 3) {
+            // Programmatically close the polygon
+            // Ensure first and last are same for Polygon
+            const closedCoords = [...coords];
+            if (JSON.stringify(closedCoords[0]) !== JSON.stringify(closedCoords[closedCoords.length - 1])) {
+              closedCoords.push(closedCoords[0]);
             }
-          };
-          
-          draw.current.deleteAll();
-          draw.current.add(newPolygon);
-          
-          // Trigger the create logic manually since deleteAll/add might not fire draw.create
-          historyRef.current = [closedCoords];
-          computeArea(newPolygon);
-          setHasActive(true);
-          setDrawMode("idle");
-          setVertexCount(0);
-          setTimeout(() => draw.current?.changeMode("simple_select"), 100);
-          return;
+            
+            const newPolygon: GeoJSON.Feature<GeoJSON.Polygon> = {
+              type: "Feature",
+              properties: {},
+              geometry: {
+                type: "Polygon",
+                coordinates: [closedCoords]
+              }
+            };
+            
+            draw.current.deleteAll();
+            draw.current.add(newPolygon);
+            
+            // Trigger the create logic manually
+            historyRef.current = [closedCoords];
+            computeAreaRef.current(newPolygon);
+            setHasActive(true);
+            setDrawMode("idle");
+            setVertexCount(0);
+            
+            setTimeout(() => {
+              draw.current?.changeMode("simple_select");
+            }, 100);
+            return;
+          }
         }
       }
       
-      draw.current.changeMode("simple_select");
-      if (draw.current.getAll().features.length === 0) {
+      // Fallback
+      try {
+        draw.current.changeMode("simple_select");
+      } catch (e) {
+        console.error("Failed to change mode:", e);
+      }
+      
+      const currentData = draw.current.getAll();
+      if (currentData.features.length === 0) {
         setDrawMode("idle");
         setVertexCount(0);
       }

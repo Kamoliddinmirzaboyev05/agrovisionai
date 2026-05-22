@@ -319,26 +319,7 @@ export function FieldPage() {
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
               <p className="text-xs font-semibold text-blue-900 mb-2">
                 📍 Qanday qilib:
-Men React + Vite + TypeScript arxitekturasida loyiha ishlab chiqyapman. Hozirda brauzer konsolida jiddiy xatolik yuzaga kelyapti, loyiha qotib qolyapti va faqat "Hard Refresh" qilgandagina vaqtincha ishlab ketyapti. Muammoning asosiy ildizi React Hooks qoidalarining buzilishi va Vite HMR ulanishidagi xatolik bilan bog'liq deb o'ylayapman.
-
-Sizdan ushbu muammoni ildizi bilan hal qilishni, arxitekturaviy xatoni tushuntirishni va kodni qayta yozib berishni so'rayman.
-
-Mana konsolda chiqayotgan asosiy xatoliklar:
-1. "Uncaught TypeError: Cannot read properties of null (reading 'useReducer') at AuthProvider (authStore.ts:43:29)"
-2. "Warning: Invalid hook call. Hooks can only be called inside of the body of a function component."
-3. "[vite] failed to connect to websocket (Error: WebSocket closed without opened.)"
-
-Mening hozirgi `src/store/authStore.ts` (yoki auth provider joylashgan fayl) kodim quyidagicha:
-[BU ERGA `authStore.ts` FAYLIDAGI BARCHA KODNI JOYLASHTIRING]
-
-Ushbu loyihada `AuthProvider` komponenti `AppRouter` yoki `App.tsx` ichida qanday o'ralganini ko'rsatuvchi kod qismi:
-[BU ERGA `App.tsx` YOKI `main.tsx` ICHIDAGI PROVIDER O'RALGAN QISMINI JOYLASHTIRING]
-
-Sizdan quyidagilarni bajarishingizni so'rayman:
-1. **Muammoning aniq tahlili:** Nima sababdan `useReducer` null qiymat o'qiyapti? Men React Hooks qoidasini aynan qaysi satrda va qanday buzganman?
-2. **Kodni to'g'rilash:** Yuqoridagi `authStore.ts` kodini React va TypeScript qoidalariga moslab, xatosiz, eng mukammal ko'rinishda qayta yozib bering.
-3. **Vite muammosi yechimi:** Vite WebSocket ulanishi (HMR) uzilib qolayotgani va loyiha keshlanib qolayotgani uchun `vite.config.ts` yoki paketlar darajasida nimalarni o'zgartirishim kerak?
-4. **Profilaktika:** Kelajakda React loyihalarida bunday "Invalid hook call" xatolariga qayta duch kelmasligim uchun qanday oltin qoidalarga amal qilishim kerak?              </p>
+              </p>
               <ol className="text-xs text-blue-700 space-y-1.5">
                 <li className="flex gap-2">
                   <span className="font-bold">1.</span>
@@ -346,7 +327,7 @@ Sizdan quyidagilarni bajarishingizni so'rayman:
                 </li>
                 <li className="flex gap-2">
                   <span className="font-bold">2.</span>
-                  <span>Kamida 3 ta nuqta bo'lgach, "Tugatish" tugmasini bosing yoki birinchi nuqtaga bosing</span>
+                  <span>Kamida 3 ta nuqta bo'lgach, "Tugatish" tugmasini bosing yoki birinchi nuqtaga bosing. (Xatoni o'chirish uchun Backspace tugmasidan foydalaning)</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="font-bold">3.</span>
