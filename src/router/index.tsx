@@ -1,5 +1,7 @@
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router';
 import { AuthProvider } from '@/store/authStore';
+import { ConfirmProvider } from '@/store/ConfirmContext';
+import { Toaster } from '@/app/components/ui/sonner';
 import { ProtectedRoute } from './ProtectedRoute';
 import { AppLayout } from '@/layouts/AppLayout';
 import { AuthLayout } from '@/layouts/AuthLayout';
@@ -7,6 +9,7 @@ import { LoginPage } from '@/features/auth/pages/LoginPage';
 import { RegisterPage } from '@/features/auth/pages/RegisterPage';
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
 import { FieldPage } from '@/features/field/pages/FieldPage';
+import { MyFieldsPage } from '@/features/field/pages/MyFieldsPage';
 import { UploadPage } from '@/features/analysis/pages/UploadPage';
 import { LoadingPage } from '@/features/analysis/pages/LoadingPage';
 import { ResultPage } from '@/features/analysis/pages/ResultPage';
@@ -33,6 +36,7 @@ const router = createBrowserRouter([
         children: [
           { path: ROUTES.HOME, element: <DashboardPage /> },
           { path: ROUTES.FIELD, element: <FieldPage /> },
+          { path: ROUTES.MY_FIELDS, element: <MyFieldsPage /> },
           { path: ROUTES.UPLOAD, element: <UploadPage /> },
           { path: ROUTES.LOADING, element: <LoadingPage /> },
           { path: ROUTES.RESULT, element: <ResultPage /> },
@@ -50,7 +54,10 @@ const router = createBrowserRouter([
 export function AppRouter() {
   return (
     <AuthProvider>
-      <RouterProvider router={router} />
+      <ConfirmProvider>
+        <RouterProvider router={router} />
+        <Toaster position="top-center" richColors />
+      </ConfirmProvider>
     </AuthProvider>
   );
 }

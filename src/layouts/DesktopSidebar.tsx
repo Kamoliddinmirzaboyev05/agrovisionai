@@ -22,6 +22,7 @@ interface DesktopSidebarProps {
 const SIDEBAR_ITEMS = [
   { path: ROUTES.HOME, icon: LayoutDashboard, label: 'Bosh sahifa' },
   { path: ROUTES.FIELD, icon: Map, label: 'Dala xaritasi' },
+  { path: ROUTES.MY_FIELDS, icon: Leaf, label: 'Maydonlarim' },
   { path: ROUTES.HISTORY, icon: BarChart3, label: 'Tahlil tarixi' },
   { path: ROUTES.PRICING, icon: CreditCard, label: 'Tariflar' },
   { path: ROUTES.PROFILE, icon: User, label: 'Profil' },

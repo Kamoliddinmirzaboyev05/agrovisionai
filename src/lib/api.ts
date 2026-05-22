@@ -111,7 +111,14 @@ async function request<T>(url: string, options: RequestOptions = {}): Promise<T>
       }
       errorData = JSON.parse(text);
     } catch (e: any) {
-      throw new Error(e.message || `Xatolik yuz berdi: ${response.status}`);
+      const error: any = new Error(e.message || `Xatolik yuz berdi: ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    
+    // Attach status to the error object if it's an object
+    if (typeof errorData === 'object' && errorData !== null) {
+      errorData.status = response.status;
     }
     throw errorData;
   }

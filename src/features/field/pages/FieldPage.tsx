@@ -20,6 +20,8 @@ import {
   Lightbulb,
   Zap,
   Calendar,
+  Satellite,
+  RefreshCw,
 } from "lucide-react";
 import {
   MapboxFieldMap,
@@ -30,7 +32,9 @@ import { AreaDisplay } from "../components/AreaDisplay";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { CROPS } from "@/constants";
 import { ROUTES } from "@/router/routes";
-import type { FieldData, SavedField } from "@/types";
+import { toast } from "sonner";
+import { useConfirm } from "@/store/ConfirmContext";
+import type { FieldData, SavedField, AnalysisResult } from "@/types";
 import {
   LineChart,
   Line,
@@ -48,6 +52,7 @@ import { ensureCsrfToken } from "@/lib/api";
 export function FieldPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const confirm = useConfirm();
   const mapboxRef = useRef<MapboxFieldMapHandle>(null);
 
   const [savedFields, setSavedFields] = useState<SavedField[]>([]);
@@ -60,7 +65,8 @@ export function FieldPage() {
       try {
         setIsLoadingFields(true);
         const data = await fieldService.getFields();
-        const fields = data.results || [];
+        // Handle both wrapped results and direct array response
+        const fields = Array.isArray(data) ? data : (data?.results || []);
         setSavedFields(fields);
         if (fields.length > 0 && !activeFieldId) {
           setActiveFieldId(fields[0].id);
@@ -87,6 +93,7 @@ export function FieldPage() {
   const [crop, setCrop] = useState<string>("");
   const [lastIrrigation, setLastIrrigation] = useState<string>(new Date().toISOString().split('T')[0]);
   const [waterCycle, setWaterCycle] = useState<number>(7);
+  const [notes, setNotes] = useState<string>("");
   const [isDrawingMode, setIsDrawingMode] = useState(false);
   const [editingFieldId, setEditingFieldId] = useState<number | null>(null);
 
@@ -94,6 +101,26 @@ export function FieldPage() {
   const [analysisTab, setAnalysisTab] = useState("AI Tahlil");
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisStep, setAnalysisStep] = useState(0);
+
+  const ANALYSIS_STEPS = [
+    "Yo'ldosh ma'lumotlari olinmoqda...",
+    "NDVI ko'rsatkichlari hisoblanmoqda...",
+    "Tuproq tarkibi tahlil qilinmoqda...",
+    "Ob-havo prognozi tekshirilmoqda...",
+    "AI tavsiyalar shakllantirilmoqda...",
+  ];
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isAnalyzing) {
+      setAnalysisStep(0);
+      interval = setInterval(() => {
+        setAnalysisStep((prev) => (prev + 1) % ANALYSIS_STEPS.length);
+      }, 2500);
+    }
+    return () => clearInterval(interval);
+  }, [isAnalyzing]);
 
   const [mobileView, setMobileView] = useState<"map" | "analysis">(
     "map",
@@ -117,6 +144,9 @@ export function FieldPage() {
     setIsDrawingMode(true);
     setFieldName("");
     setCrop("");
+    setNotes("");
+    setLastIrrigation(new Date().toISOString().split('T')[0]);
+    setWaterCycle(7);
     if (isMobile) setMobileView("map");
     // Small delay to ensure state is set before drawing starts
     setTimeout(() => {
@@ -126,7 +156,7 @@ export function FieldPage() {
 
   // Save field with name and crop
   const handleSaveField = async () => {
-    if (!draftPolygon || draftArea.m2 < 100 || !fieldName.trim() || !crop)
+    if (!draftPolygon || draftArea.m2 < 100 || !fieldName.trim())
       return;
 
     const coordinates = draftPolygon.geometry.coordinates[0].map(([lng, lat]) => ({ lat, lng }));
@@ -135,14 +165,14 @@ export function FieldPage() {
 
     const payload = {
       name: fieldName.trim(),
-      crop,
+      crop: crop || "Boshqa",
       coordinates,
       center_lat,
       center_lng,
       area_ha: draftArea.hectare,
       last_irrigation: lastIrrigation,
       water_cycle: waterCycle,
-      notes: "",
+      notes: notes.trim(),
     };
 
     try {
@@ -160,6 +190,7 @@ export function FieldPage() {
       // Reset form
       setFieldName("");
       setCrop("");
+      setNotes("");
       setIsDrawingMode(false);
       setEditingFieldId(null);
 
@@ -170,9 +201,10 @@ export function FieldPage() {
 
       // Auto-switch to analysis view on mobile
       if (isMobile) setMobileView("analysis");
+      toast.success(editingFieldId ? "Dala yangilandi" : "Dala muvaffaqiyatli saqlandi");
     } catch (err: any) {
       console.error("Save field failed:", err);
-      alert(err.message || "Dalani saqlashda xatolik yuz berdi.");
+      toast.error(err.message || "Dalani saqlashda xatolik yuz berdi.");
     }
   };
 
@@ -182,6 +214,7 @@ export function FieldPage() {
     setCrop(field.crop);
     if (field.last_irrigation) setLastIrrigation(field.last_irrigation);
     if (field.water_cycle) setWaterCycle(field.water_cycle);
+    if (field.notes) setNotes(field.notes);
     setIsDrawingMode(true);
     if (isMobile) setMobileView("map");
     
@@ -205,6 +238,7 @@ export function FieldPage() {
     setEditingFieldId(null);
     setFieldName("");
     setCrop("");
+    setNotes("");
     mapboxRef.current?.clearActive();
     setDraftPolygon(null);
     setDraftArea({ m2: 0, sotix: 0, hectare: 0 });
@@ -212,26 +246,80 @@ export function FieldPage() {
     if (isMobile) setMobileView("analysis");
   };
 
+  const mapAnalysisData = (data: any): AnalysisResult => {
+    return {
+      ...data,
+      ndvi_current: data.ndvi?.current ?? data.ndvi_current,
+      ndvi_change: data.ndvi?.change ?? data.ndvi_change,
+      drought_index: data.ndvi?.drought_index ?? data.drought_index,
+      ndwi_current: data.ndvi?.ndwi_current ?? data.ndwi_current,
+      ndvi_monthly: data.ndvi?.monthly ?? data.ndvi_monthly,
+      soil_data: data.soil ?? data.soil_data,
+      weather_data: data.weather ?? data.weather_data,
+      ai_analysis: data.analysis ?? data.ai_analysis,
+    };
+  };
+
   const handleDeleteField = async (id: number) => {
-    if (!confirm("Haqiqatan ham ushbu dalani o'chirmoqchimisiz?")) return;
+    const isConfirmed = await confirm({
+      title: "Dalani o'chirish",
+      description: "Haqiqatan ham ushbu dalani o'chirmoqchimisiz? Bu amalni ortga qaytarib bo'lmaydi.",
+      confirmText: "O'chirish",
+      variant: "destructive"
+    });
+
+    if (!isConfirmed) return;
+
     try {
       await fieldService.deleteField(id);
       const updated = savedFields.filter((f) => f.id !== id);
       setSavedFields(updated);
       if (activeFieldId === id) setActiveFieldId(updated[0]?.id ?? null);
+      toast.success("Dala muvaffaqiyatli o'chirildi");
     } catch (err: any) {
       console.error("Delete field failed:", err);
-      alert(err.message || "Dalani o'chirishda xatolik yuz berdi.");
+      toast.error(err.message || "Dalani o'chirishda xatolik yuz berdi.");
     }
   };
 
   const handleFieldClick = useCallback(
-    (id: number) => {
+    async (id: number) => {
       setActiveFieldId(id);
       const field = savedFields.find(f => f.id === id);
       if (field) {
         if (field.last_irrigation) setLastIrrigation(field.last_irrigation);
         if (field.water_cycle) setWaterCycle(field.water_cycle);
+        
+        // Fetch field history (latest analysis result)
+        try {
+          let data = await fieldService.getFieldHistory(id);
+          
+          // Agar backend massiv qaytarsa, eng birinchisini (oxirgisini) olamiz
+          if (Array.isArray(data)) {
+            data = data[0];
+          } else if (data && (data as any).results && Array.isArray((data as any).results)) {
+            data = (data as any).results[0];
+          }
+          
+          if (data) {
+            setAnalysisResult(mapAnalysisData(data));
+          } else {
+            setAnalysisResult(null);
+          }
+        } catch (err: any) {
+          // 404 xatosi dala uchun hali tahlil tarixi yo'qligini anglatadi
+          const isNotFound = 
+            err?.status === 404 || 
+            err?.error === 'Topilmadi' || 
+            (typeof err?.detail === 'string' && err.detail.includes('Not found'));
+
+          if (isNotFound) {
+            console.log(`No history found for field ${id} (expected)`);
+          } else {
+            console.error("Failed to fetch field history:", err);
+          }
+          setAnalysisResult(null);
+        }
       }
       if (isMobile) setMobileView("analysis");
     },
@@ -252,11 +340,13 @@ export function FieldPage() {
         last_irrigation: lastIrrigation,
         water_cycle: waterCycle,
       });
-      setAnalysisResult(data);
+
+      // Backend returns a structured result. Map it if necessary.
+      setAnalysisResult(mapAnalysisData(data));
     } catch (err: any) {
       console.error("Analysis failed:", err);
       const msg = err?.detail || err?.message || err?.error || "Tahlil jarayonida xatolik yuz berdi.";
-      alert(msg);
+      toast.error(msg);
     } finally {
       setIsAnalyzing(false);
     }
@@ -264,7 +354,7 @@ export function FieldPage() {
 
   const handleNext = () => {
     if (!activeField) {
-      alert("Avval dala tanlang yoki yangi dala chizing.");
+      toast.error("Avval dala tanlang yoki yangi dala chizing.");
       return;
     }
     const fieldData: FieldData = {
@@ -399,7 +489,7 @@ export function FieldPage() {
                     value={fieldName}
                     onChange={(e) => setFieldName(e.target.value)}
                     placeholder="Masalan: Shimoliy dala"
-                    className="w-full border border-border rounded-xl px-4 py-3 text-foreground font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                    className="w-full border border-border rounded-xl px-4 py-3 text-foreground font-medium focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
                   />
                 </div>
 
@@ -413,7 +503,7 @@ export function FieldPage() {
                   <button
                     onClick={handleSaveField}
                     disabled={!fieldName.trim()}
-                    className="flex-1 py-3 rounded-xl bg-primary text-white font-semibold hover:opacity-90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="flex-1 py-3 rounded-xl bg-primary text-white font-semibold hover:opacity-90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md hover:shadow-lg active:scale-95 transition-all"
                   >
                     <Save className="w-4 h-4" />
                     {editingFieldId ? "Yangilash" : "Saqlash"}
@@ -490,7 +580,15 @@ export function FieldPage() {
                 className="w-full py-4 rounded-xl bg-primary hover:opacity-90 text-white text-sm font-bold flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
               >
                 {isAnalyzing ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <div className="flex flex-col items-center gap-1">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>Tahlil qilinmoqda...</span>
+                    </div>
+                    <p className="text-[10px] font-normal opacity-80 animate-pulse">
+                      {ANALYSIS_STEPS[analysisStep]}
+                    </p>
+                  </div>
                 ) : analysisResult ? (
                   "🔄 Qayta tahlil qilish"
                 ) : (
@@ -518,8 +616,31 @@ export function FieldPage() {
           </>
         )}
 
+        {isAnalyzing && (
+          <div className="px-6 py-20 flex flex-col items-center justify-center text-center space-y-6">
+            <div className="relative">
+              <div className="w-24 h-24 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Satellite className="w-10 h-10 text-primary animate-pulse" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-lg font-bold text-foreground">Dala tahlil qilinmoqda</h3>
+              <p className="text-sm text-muted-foreground animate-pulse">
+                {ANALYSIS_STEPS[analysisStep]}
+              </p>
+            </div>
+            <div className="w-full max-w-xs bg-gray-100 h-1.5 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-primary transition-all duration-500 ease-out"
+                style={{ width: `${((analysisStep + 1) / ANALYSIS_STEPS.length) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Tab Content */}
-        {!isDrawingMode && analysisTab === "NDVI" && (
+        {!isDrawingMode && !isAnalyzing && analysisTab === "NDVI" && (
           <div className="px-6 pb-8 space-y-6">
             {analysisResult ? (
               <>
@@ -528,17 +649,17 @@ export function FieldPage() {
                     Joriy NDVI (O'simlik zichligi)
                   </p>
                   <h2 className="text-7xl font-black text-primary mb-2">
-                    {analysisResult.ndvi?.current?.toFixed(3) || "0.000"}
+                    {analysisResult.ndvi_current?.toFixed(3) || "0.000"}
                   </h2>
                   <div className="flex items-center justify-center gap-2 mb-4">
-                    {analysisResult.ndvi?.change !== undefined && (
-                      <div className={`text-[10px] font-bold px-3 py-1 rounded-full border flex items-center gap-1 ${analysisResult.ndvi.change >= 0 ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"}`}>
-                        {analysisResult.ndvi.change >= 0 ? "↑" : "↓"} {Math.abs(analysisResult.ndvi.change).toFixed(3)} (o'tgan oyga nisbatan)
+                    {analysisResult.ndvi_change !== undefined && (
+                      <div className={`text-[10px] font-bold px-3 py-1 rounded-full border flex items-center gap-1 ${analysisResult.ndvi_change >= 0 ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"}`}>
+                        {analysisResult.ndvi_change >= 0 ? "↑" : "↓"} {Math.abs(analysisResult.ndvi_change).toFixed(3)} (o'tgan oyga nisbatan)
                       </div>
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed max-w-xs mx-auto">
-                    {analysisResult.analysis?.ndvi_baho || "Normalized Difference Vegetation Index"}
+                    {analysisResult.ndvi_label || "Normalized Difference Vegetation Index"}
                   </p>
                 </div>
 
@@ -549,11 +670,11 @@ export function FieldPage() {
                     <span>Zich o'simlik</span>
                   </div>
                   <div className="h-3 w-full rounded-full bg-gradient-to-r from-red-200 via-yellow-200 to-green-500 relative">
-                    {analysisResult.ndvi?.current !== undefined && (
+                    {analysisResult.ndvi_current !== undefined && (
                       <div
                         className="absolute top-1/2 -translate-y-1/2 w-5 h-5 bg-white border-4 border-primary rounded-full shadow-xl transition-all duration-1000"
                         style={{
-                          left: `${Math.max(0, Math.min(100, ((analysisResult.ndvi.current + 0.1) / 1.1) * 100))}%`,
+                          left: `${Math.max(0, Math.min(100, ((analysisResult.ndvi_current + 0.1) / 1.1) * 100))}%`,
                         }}
                       />
                     )}
@@ -564,12 +685,12 @@ export function FieldPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-orange-50/50 rounded-2xl p-4 border border-orange-100">
                     <p className="text-[10px] font-bold text-orange-700 uppercase mb-2">Qurg'oqchilik (DI)</p>
-                    <p className="text-xl font-black text-orange-900">{analysisResult.ndvi?.drought_index?.toFixed(2) || "0.00"}</p>
-                    <p className="text-[9px] text-orange-600 font-medium mt-1">{analysisResult.analysis?.qurgochlik || "O'rtacha"}</p>
+                    <p className="text-xl font-black text-orange-900">{analysisResult.drought_index?.toFixed(2) || "0.00"}</p>
+                    <p className="text-[9px] text-orange-600 font-medium mt-1">{analysisResult.ai_analysis?.yer_tahlili?.osimlik_holati || "O'rtacha"}</p>
                   </div>
                   <div className="bg-blue-50/50 rounded-2xl p-4 border border-blue-100">
                     <p className="text-[10px] font-bold text-blue-700 uppercase mb-2">Suv stressi (NDWI)</p>
-                    <p className="text-xl font-black text-blue-900">{analysisResult.ndvi?.ndwi_current?.toFixed(2) || "N/A"}</p>
+                    <p className="text-xl font-black text-blue-900">{analysisResult.ndwi_current?.toFixed(2) || "N/A"}</p>
                     <p className="text-[9px] text-blue-600 font-medium mt-1">Suv miqdori</p>
                   </div>
                 </div>
@@ -578,12 +699,12 @@ export function FieldPage() {
                 <div className="bg-white rounded-2xl p-5 border border-border">
                   <div className="flex items-center justify-between mb-6">
                     <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">NDVI Trend</h4>
-                    <span className="text-[10px] text-muted-foreground font-mono bg-gray-100 px-2 py-1 rounded">Sentinel-2 Data</span>
+                    <span className="text-[10px] text-muted-foreground font-mono bg-gray-100 px-2 py-1 rounded">Satellite Data</span>
                   </div>
                   <div className="h-48 w-full">
-                    {analysisResult.ndvi?.monthly && analysisResult.ndvi.monthly.length > 0 ? (
+                    {analysisResult.ndvi_monthly && analysisResult.ndvi_monthly.length > 0 ? (
                       <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={analysisResult.ndvi.monthly}>
+                        <LineChart data={analysisResult.ndvi_monthly}>
                           <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" vertical={false} />
                           <XAxis 
                             dataKey="month" 
@@ -641,26 +762,26 @@ export function FieldPage() {
           </div>
         )}
 
-        {!isDrawingMode && analysisTab === "Tuproq" && (
+        {!isDrawingMode && !isAnalyzing && analysisTab === "Tuproq" && (
           <div className="px-6 pb-8 space-y-6">
-            {analysisResult?.soil ? (
+            {analysisResult?.soil_data ? (
               <div className="flex flex-col gap-6">
                 {/* 1. Haroratlar */}
                 <div className="grid grid-cols-3 gap-3">
                   <div className="bg-orange-50 rounded-2xl p-3 border border-orange-100 text-center">
                     <Thermometer className="w-5 h-5 text-orange-600 mx-auto mb-1" />
                     <p className="text-[8px] text-orange-700 uppercase font-bold">Yuza</p>
-                    <p className="text-lg font-black text-orange-900">{analysisResult.soil.surface_temp}°C</p>
+                    <p className="text-lg font-black text-orange-900">{analysisResult.soil_data.surface_temp}°C</p>
                   </div>
                   <div className="bg-orange-50 rounded-2xl p-3 border border-orange-100 text-center">
                     <Thermometer className="w-5 h-5 text-orange-500 mx-auto mb-1" />
                     <p className="text-[8px] text-orange-700 uppercase font-bold">6cm</p>
-                    <p className="text-lg font-black text-orange-900">{analysisResult.soil.depth_6cm_temp}°C</p>
+                    <p className="text-lg font-black text-orange-900">{analysisResult.soil_data.depth_6cm_temp}°C</p>
                   </div>
                   <div className="bg-orange-50 rounded-2xl p-3 border border-orange-100 text-center">
                     <Thermometer className="w-5 h-5 text-orange-400 mx-auto mb-1" />
                     <p className="text-[8px] text-orange-700 uppercase font-bold">18cm</p>
-                    <p className="text-lg font-black text-orange-900">{analysisResult.soil.depth_18cm_temp}°C</p>
+                    <p className="text-lg font-black text-orange-900">{analysisResult.soil_data.depth_18cm_temp}°C</p>
                   </div>
                 </div>
 
@@ -671,10 +792,10 @@ export function FieldPage() {
                   </h4>
                   <div className="space-y-4">
                     {[
-                      { label: "0-1 cm", val: analysisResult.soil.moisture_0_1cm, label_uz: analysisResult.soil.properties?.gwet_top_label },
-                      { label: "1-3 cm", val: analysisResult.soil.moisture_1_3cm },
-                      { label: "3-9 cm", val: analysisResult.soil.moisture_3_9cm },
-                      { label: "9-27 cm", val: analysisResult.soil.moisture_9_27cm, label_uz: analysisResult.soil.properties?.gwet_root_label },
+                      { label: "0-1 cm", val: analysisResult.soil_data.moisture_0_1cm, label_uz: analysisResult.soil_data.properties?.gwet_top_label },
+                      { label: "1-3 cm", val: analysisResult.soil_data.moisture_1_3cm },
+                      { label: "3-9 cm", val: analysisResult.soil_data.moisture_3_9cm },
+                      { label: "9-27 cm", val: analysisResult.soil_data.moisture_9_27cm, label_uz: analysisResult.soil_data.properties?.gwet_root_label },
                     ].map((m, i) => (
                       <div key={i} className="space-y-1.5">
                         <div className="flex justify-between text-[10px] font-bold">
@@ -696,7 +817,7 @@ export function FieldPage() {
                 </div>
 
                 {/* 3. Tuproq xususiyatlari (Agar mavjud bo'lsa) */}
-                {analysisResult.soil.properties?.soilgrids_ok && (
+                {analysisResult.soil_data.properties?.soilgrids_ok && (
                   <div className="bg-gray-50 rounded-2xl p-5 border border-border">
                     <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-4">
                       Kimyoviy va fizik tarkibi
@@ -705,25 +826,25 @@ export function FieldPage() {
                       <div className="flex flex-col gap-1">
                         <span className="text-[10px] text-muted-foreground">pH darajasi</span>
                         <span className="text-sm font-bold text-blue-600">
-                          {analysisResult.soil.properties?.ph_h2o?.toFixed(1) || "N/A"} ({analysisResult.soil.properties?.ph_label})
+                          {analysisResult.soil_data.properties?.ph_h2o?.toFixed(1) || "N/A"} ({analysisResult.soil_data.properties?.ph_label})
                         </span>
                       </div>
                       <div className="flex flex-col gap-1">
                         <span className="text-[10px] text-muted-foreground">Organik uglerod</span>
                         <span className="text-sm font-bold text-primary">
-                          {analysisResult.soil.properties?.soc?.toFixed(1) || "N/A"} g/kg
+                          {analysisResult.soil_data.properties?.soc?.toFixed(1) || "N/A"} g/kg
                         </span>
                       </div>
                       <div className="flex flex-col gap-1">
                         <span className="text-[10px] text-muted-foreground">Azot miqdori</span>
                         <span className="text-sm font-bold text-purple-600">
-                          {analysisResult.soil.properties?.nitrogen || "N/A"} mg/kg
+                          {analysisResult.soil_data.properties?.nitrogen || "N/A"} mg/kg
                         </span>
                       </div>
                       <div className="flex flex-col gap-1">
                         <span className="text-[10px] text-muted-foreground">Tuzilishi (Texture)</span>
                         <span className="text-sm font-bold text-orange-600">
-                          {analysisResult.soil.properties?.texture || "N/A"}
+                          {analysisResult.soil_data.properties?.texture || "N/A"}
                         </span>
                       </div>
                     </div>
@@ -736,12 +857,12 @@ export function FieldPage() {
                     <Wind className="w-5 h-5 text-teal-600" />
                     <div>
                       <p className="text-[10px] text-muted-foreground uppercase">Shamol tezligi</p>
-                      <p className="text-sm font-bold text-foreground">{analysisResult.soil.wind_speed} m/s</p>
+                      <p className="text-sm font-bold text-foreground">{analysisResult.soil_data.wind_speed} m/s</p>
                     </div>
                   </div>
                   <div className="text-right">
                     <p className="text-[10px] text-muted-foreground uppercase">Havoning namligi</p>
-                    <p className="text-sm font-bold text-foreground">{analysisResult.soil.humidity}%</p>
+                    <p className="text-sm font-bold text-foreground">{analysisResult.soil_data.humidity}%</p>
                   </div>
                 </div>
               </div>
@@ -756,15 +877,15 @@ export function FieldPage() {
           </div>
         )}
 
-        {!isDrawingMode && analysisTab === "Ob-havo" && (
+        {!isDrawingMode && !isAnalyzing && analysisTab === "Ob-havo" && (
           <div className="px-6 pb-8 space-y-6">
-            {analysisResult?.weather ? (
+            {analysisResult?.weather_data ? (
               <div className="flex flex-col gap-6">
                 <div className="bg-gradient-to-br from-blue-500 to-blue-700 rounded-3xl p-6 text-white shadow-lg">
                   <div className="flex justify-between items-start mb-6">
                     <div>
                       <p className="text-[10px] text-blue-100 font-bold uppercase tracking-widest">O'rtacha harorat</p>
-                      <h2 className="text-5xl font-black">{analysisResult.weather.avg_temp}°C</h2>
+                      <h2 className="text-5xl font-black">{analysisResult.weather_data.avg_temp}°C</h2>
                     </div>
                     <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md">
                       <CloudRain className="w-6 h-6 text-white" />
@@ -773,11 +894,11 @@ export function FieldPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-white/10 rounded-xl p-3 backdrop-blur-sm">
                       <p className="text-[9px] text-blue-100 uppercase font-bold mb-1">Yillik yog'in</p>
-                      <p className="text-lg font-bold">{analysisResult.weather.annual_precip} mm</p>
+                      <p className="text-lg font-bold">{analysisResult.weather_data.annual_precip} mm</p>
                     </div>
                     <div className="bg-white/10 rounded-xl p-3 backdrop-blur-sm">
                       <p className="text-[9px] text-blue-100 uppercase font-bold mb-1">Namlik</p>
-                      <p className="text-lg font-bold">{analysisResult.weather.avg_humidity}%</p>
+                      <p className="text-lg font-bold">{analysisResult.weather_data.avg_humidity}%</p>
                     </div>
                   </div>
                 </div>
@@ -798,7 +919,7 @@ export function FieldPage() {
                   </div>
                   <div className="h-48 w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={analysisResult.weather.monthly}>
+                      <LineChart data={analysisResult.weather_data.monthly}>
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" vertical={false} />
                         <XAxis 
                           dataKey="month" 
@@ -844,7 +965,7 @@ export function FieldPage() {
                   </div>
                   <div>
                     <p className="text-[10px] text-muted-foreground font-bold uppercase">O'rtacha shamol tezligi</p>
-                    <p className="text-sm font-bold text-foreground">{analysisResult.weather.avg_wind} m/s</p>
+                    <p className="text-sm font-bold text-foreground">{analysisResult.weather_data.avg_wind} m/s</p>
                   </div>
                 </div>
               </div>
@@ -859,9 +980,9 @@ export function FieldPage() {
           </div>
         )}
 
-        {!isDrawingMode && analysisTab === "AI Tahlil" && (
+        {!isDrawingMode && !isAnalyzing && analysisTab === "AI Tahlil" && (
           <div className="px-6 pb-8 space-y-6">
-            {analysisResult?.analysis ? (
+            {analysisResult?.ai_analysis ? (
               <>
                 {/* 1. Xulosa va Asosiy tavsiya */}
                 <div className="bg-primary/5 rounded-2xl p-6 border border-primary/10">
@@ -872,17 +993,17 @@ export function FieldPage() {
                     <div>
                       <h3 className="font-bold text-lg text-foreground">AI Xulosa</h3>
                       <p className="text-[10px] text-muted-foreground uppercase tracking-widest">
-                        {analysisResult.source}
+                        Sun'iy intellekt tahlili
                       </p>
                     </div>
                   </div>
                   <p className="text-sm leading-relaxed text-foreground/80 italic mb-4">
-                    "{analysisResult.analysis.xulosa}"
+                    "{analysisResult.ai_analysis.xulosa}"
                   </p>
                   <div className="bg-white/60 backdrop-blur-sm rounded-xl p-4 border border-primary/5">
                     <p className="text-[10px] font-bold text-primary uppercase mb-2">Eng foydali ekin:</p>
                     <p className="text-sm font-bold text-foreground">
-                      {analysisResult.analysis.eng_foydali_ekin}
+                      {analysisResult.ai_analysis.eng_foydali_ekin}
                     </p>
                   </div>
                 </div>
@@ -894,7 +1015,7 @@ export function FieldPage() {
                     Bugun nima qilish kerak?
                   </h4>
                   <div className="flex flex-col gap-2">
-                    {analysisResult.analysis.bugun_nima_qilish?.map((item: string, i: number) => (
+                    {analysisResult.ai_analysis.bugun_nima_qilish?.map((item: string, i: number) => (
                       <div key={i} className="bg-green-50/50 rounded-xl p-3 border border-green-100 flex gap-3">
                         <span className="w-5 h-5 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">
                           {i + 1}
@@ -912,7 +1033,7 @@ export function FieldPage() {
                     Ekin tavsiyalari
                   </h4>
                   <div className="flex flex-col gap-3">
-                    {analysisResult.analysis.ekin_tavsiyalari?.map((item: any, i: number) => (
+                    {analysisResult.ai_analysis.ekin_tavsiyalari?.map((item: any, i: number) => (
                       <div key={i} className="bg-gray-50 rounded-2xl p-4 border border-border hover:border-primary/30 transition-all group">
                         <div className="flex justify-between items-start mb-3">
                           <div>
@@ -956,15 +1077,15 @@ export function FieldPage() {
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
                         <span className="text-blue-700/60">Manba:</span>
-                        <span className="font-bold text-blue-900">{analysisResult.analysis.sugorish_rejasi?.manba}</span>
+                        <span className="font-bold text-blue-900">{analysisResult.ai_analysis.sugorish_rejasi?.manba}</span>
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-blue-700/60">Chastota:</span>
-                        <span className="font-bold text-blue-900">{analysisResult.analysis.sugorish_rejasi?.chastota}</span>
+                        <span className="font-bold text-blue-900">{analysisResult.ai_analysis.sugorish_rejasi?.chastota}</span>
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-blue-700/60">Usul:</span>
-                        <span className="font-bold text-blue-900">{analysisResult.analysis.sugorish_rejasi?.usul}</span>
+                        <span className="font-bold text-blue-900">{analysisResult.ai_analysis.sugorish_rejasi?.usul}</span>
                       </div>
                     </div>
                   </div>
@@ -975,7 +1096,7 @@ export function FieldPage() {
                       <h4 className="text-sm font-bold text-amber-900">O'g'itlash rejasi</h4>
                     </div>
                     <div className="space-y-2">
-                      {analysisResult.analysis.ogit_rejasi?.map((item: string, i: number) => (
+                      {analysisResult.ai_analysis.ogit_rejasi?.map((item: string, i: number) => (
                         <p key={i} className="text-xs text-amber-900/80 leading-relaxed">• {item}</p>
                       ))}
                     </div>
@@ -986,7 +1107,7 @@ export function FieldPage() {
                  <div className="space-y-3">
                    <h4 className="text-xs font-bold text-foreground px-1">Xavflar va ehtiyot choralari</h4>
                    <div className="flex flex-col gap-2">
-                     {analysisResult.analysis.xavflar?.map((item: string, i: number) => (
+                     {analysisResult.ai_analysis.xavflar?.map((item: string, i: number) => (
                        <div key={i} className="bg-red-50 rounded-xl p-3 border border-red-100 flex items-start gap-3">
                          <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
                          <p className="text-xs text-red-900/80">{item}</p>
@@ -1001,7 +1122,7 @@ export function FieldPage() {
                      <Calendar className="w-4 h-4 text-primary" /> Yillik ish rejasi
                    </h4>
                    <div className="space-y-3">
-                     {analysisResult.analysis.yillik_reja && Object.entries(analysisResult.analysis.yillik_reja).map(([period, task]: [string, any], i: number) => (
+                     {analysisResult.ai_analysis.yillik_reja && Object.entries(analysisResult.ai_analysis.yillik_reja).map(([period, task]: [string, any], i: number) => (
                        <div key={i} className="flex gap-3">
                          <div className="w-16 flex-shrink-0">
                            <p className="text-[10px] font-bold text-primary uppercase">{period.replace('_', ' ')}</p>
@@ -1023,9 +1144,9 @@ export function FieldPage() {
           </div>
         )}
 
-        {!isDrawingMode && analysisTab === "Suv" && (
+        {!isDrawingMode && !isAnalyzing && analysisTab === "Suv" && (
           <div className="px-6 pb-8 space-y-6">
-            {analysisResult?.water ? (
+            {analysisResult?.ai_analysis ? (
               <>
                 <div className="bg-blue-600 rounded-2xl p-6 text-white shadow-lg shadow-blue-200">
                   <div className="flex items-center gap-3 mb-4">
@@ -1033,38 +1154,37 @@ export function FieldPage() {
                       <Droplets className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-lg">Suv Manbalari</h3>
-                      <p className="text-[10px] text-white/60 uppercase tracking-widest">Atrofdagi gidrologiya</p>
+                      <h3 className="font-bold text-lg">Suv holati</h3>
+                      <p className="text-[10px] text-white/60 uppercase tracking-widest">Gidrologik tahlil</p>
                     </div>
                   </div>
                   <p className="text-sm leading-relaxed text-white/90 font-medium">
-                    {analysisResult.water.summary?.plain_text}
+                    {analysisResult.ai_analysis.yer_tahlili.suv_holati}
                   </p>
                 </div>
 
-                <div className="space-y-3">
-                  <h4 className="text-xs font-bold text-foreground px-1">Yaqin atrofdagi manbalar</h4>
-                  <div className="flex flex-col gap-2">
-                    {analysisResult.water.sources?.map((source: any, i: number) => (
-                      <div key={i} className="bg-white rounded-xl p-4 border border-border flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${source.irrigation_ok ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
-                            <MapPin className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-foreground">{source.name}</p>
-                            <p className="text-[10px] text-muted-foreground">{source.type_uz} • {source.direction}</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs font-bold text-blue-600">{source.distance_text}</p>
-                          {source.irrigation_ok && (
-                            <span className="text-[8px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-bold">Sug'orishga mos</span>
-                          )}
-                        </div>
+                <div className="bg-white rounded-2xl p-5 border border-border">
+                  <h4 className="text-xs font-bold text-foreground mb-4 flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-primary" /> Sug'orish manbasi
+                  </h4>
+                  <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-sm font-bold text-blue-900">{analysisResult.ai_analysis.sugorish_rejasi.manba}</p>
+                        <p className="text-[10px] text-blue-700/60 uppercase font-bold">Asosiy manba</p>
                       </div>
-                    ))}
+                      <div className="bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-[10px] font-bold">
+                        {analysisResult.ai_analysis.sugorish_rejasi.usul}
+                      </div>
+                    </div>
                   </div>
+                </div>
+
+                <div className="bg-gray-50 rounded-2xl p-5 border border-border">
+                  <h4 className="text-xs font-bold text-foreground mb-4">Sug'orish tartibi</h4>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {analysisResult.ai_analysis.sugorish_rejasi.chastota}
+                  </p>
                 </div>
               </>
             ) : (
@@ -1432,13 +1552,21 @@ export function FieldPage() {
               disabled={isAnalyzing}
               className="w-full py-4 rounded-xl bg-primary hover:opacity-90 text-white text-sm font-bold flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50"
             >
-              {isAnalyzing ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : analysisResult ? (
-                "🔄 Qayta tahlil qilish"
-              ) : (
-                "🛰️ Ma'lumotlarni tahlil qilish"
-              )}
+            {isAnalyzing ? (
+              <div className="flex flex-col items-center gap-1">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>Tahlil qilinmoqda...</span>
+                </div>
+                <p className="text-[10px] font-normal opacity-80 animate-pulse">
+                  {ANALYSIS_STEPS[analysisStep]}
+                </p>
+              </div>
+            ) : analysisResult ? (
+              "🔄 Qayta tahlil qilish"
+            ) : (
+              "🛰️ Ma'lumotlarni tahlil qilish"
+            )}
             </button>
           </div>
 
@@ -1459,7 +1587,24 @@ export function FieldPage() {
 
           {/* Tab Content - scrollable */}
           <div className="flex-1 overflow-y-auto pb-6">
-            {analysisTab === "NDVI" && (
+            {isAnalyzing && (
+              <div className="px-6 py-12 flex flex-col items-center justify-center text-center space-y-5">
+                <div className="relative">
+                  <div className="w-20 h-20 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Satellite className="w-8 h-8 text-primary animate-pulse" />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-base font-bold text-foreground">Dala tahlili</h3>
+                  <p className="text-[10px] text-muted-foreground animate-pulse">
+                    {ANALYSIS_STEPS[analysisStep]}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {!isAnalyzing && analysisTab === "NDVI" && (
               <div className="px-4 pt-4 space-y-5">
                 {analysisResult ? (
                   <>
@@ -1468,11 +1613,11 @@ export function FieldPage() {
                         Joriy NDVI
                       </p>
                       <h2 className="text-5xl font-black text-primary mb-2">
-                        {analysisResult.ndvi?.current?.toFixed(3) || "0.000"}
+                        {analysisResult.ndvi_current?.toFixed(3) || "0.000"}
                       </h2>
-                      {analysisResult.ndvi?.change !== undefined && (
-                        <div className={`text-[10px] font-bold px-3 py-1 rounded-full border inline-flex items-center gap-1 ${analysisResult.ndvi.change >= 0 ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"}`}>
-                          {analysisResult.ndvi.change >= 0 ? "↑" : "↓"} {Math.abs(analysisResult.ndvi.change).toFixed(3)}
+                      {analysisResult.ndvi_change !== undefined && (
+                        <div className={`text-[10px] font-bold px-3 py-1 rounded-full border inline-flex items-center gap-1 ${analysisResult.ndvi_change >= 0 ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"}`}>
+                          {analysisResult.ndvi_change >= 0 ? "↑" : "↓"} {Math.abs(analysisResult.ndvi_change).toFixed(3)}
                         </div>
                       )}
                     </div>
@@ -1484,9 +1629,9 @@ export function FieldPage() {
                         <span>Zich o'simlik</span>
                       </div>
                       <div className="h-3 w-full rounded-full bg-gradient-to-r from-red-200 via-yellow-200 to-green-500 relative">
-                        {analysisResult.ndvi?.current !== undefined && (
+                        {analysisResult.ndvi_current !== undefined && (
                           <div className="absolute top-1/2 -translate-y-1/2 w-5 h-5 bg-white border-4 border-primary rounded-full shadow-xl transition-all duration-1000"
-                            style={{ left: `${Math.max(0, Math.min(100, ((analysisResult.ndvi.current + 0.1) / 1.1) * 100))}%` }}
+                            style={{ left: `${Math.max(0, Math.min(100, ((analysisResult.ndvi_current + 0.1) / 1.1) * 100))}%` }}
                           />
                         )}
                       </div>
@@ -1496,11 +1641,11 @@ export function FieldPage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="bg-orange-50/50 rounded-2xl p-3 border border-orange-100">
                         <p className="text-[9px] font-bold text-orange-700 uppercase mb-1">Qurg'oqchilik (DI)</p>
-                        <p className="text-lg font-black text-orange-900">{analysisResult.ndvi?.drought_index?.toFixed(2) || "0.00"}</p>
+                        <p className="text-lg font-black text-orange-900">{analysisResult.drought_index?.toFixed(2) || "0.00"}</p>
                       </div>
                       <div className="bg-blue-50/50 rounded-2xl p-3 border border-blue-100">
                         <p className="text-[9px] font-bold text-blue-700 uppercase mb-1">Suv stressi (NDWI)</p>
-                        <p className="text-lg font-black text-blue-900">{analysisResult.ndvi?.ndwi_current?.toFixed(2) || "N/A"}</p>
+                        <p className="text-lg font-black text-blue-900">{analysisResult.ndwi_current?.toFixed(2) || "N/A"}</p>
                       </div>
                     </div>
 
@@ -1508,9 +1653,9 @@ export function FieldPage() {
                     <div className="bg-white rounded-2xl p-4 border border-border">
                       <h4 className="text-xs font-bold text-foreground uppercase tracking-wider mb-4">NDVI Trend</h4>
                       <div className="h-40 w-full">
-                        {analysisResult.ndvi?.monthly && analysisResult.ndvi.monthly.length > 0 ? (
+                        {analysisResult.ndvi_monthly && analysisResult.ndvi_monthly.length > 0 ? (
                           <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={analysisResult.ndvi.monthly}>
+                            <LineChart data={analysisResult.ndvi_monthly}>
                               <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" vertical={false} />
                               <XAxis dataKey="month" fontSize={10} stroke="rgba(0,0,0,0.4)" tickFormatter={(v) => v.split("-")[1]} axisLine={false} tickLine={false} />
                               <YAxis fontSize={10} stroke="rgba(0,0,0,0.4)" domain={[-0.1, 1]} axisLine={false} tickLine={false} />
@@ -1533,25 +1678,25 @@ export function FieldPage() {
               </div>
             )}
 
-            {analysisTab === "Tuproq" && (
+            {!isAnalyzing && analysisTab === "Tuproq" && (
               <div className="px-4 pt-4 space-y-4">
-                {analysisResult?.soil ? (
+                {analysisResult?.soil_data ? (
                   <div className="flex flex-col gap-4">
                     <div className="grid grid-cols-3 gap-2">
                       <div className="bg-orange-50 rounded-2xl p-3 border border-orange-100 text-center">
                         <Thermometer className="w-4 h-4 text-orange-600 mx-auto mb-1" />
                         <p className="text-[8px] text-orange-700 uppercase font-bold">Yuza</p>
-                        <p className="text-base font-black text-orange-900">{analysisResult.soil.surface_temp}°C</p>
+                        <p className="text-base font-black text-orange-900">{analysisResult.soil_data.surface_temp}°C</p>
                       </div>
                       <div className="bg-orange-50 rounded-2xl p-3 border border-orange-100 text-center">
                         <Thermometer className="w-4 h-4 text-orange-500 mx-auto mb-1" />
                         <p className="text-[8px] text-orange-700 uppercase font-bold">6cm</p>
-                        <p className="text-base font-black text-orange-900">{analysisResult.soil.depth_6cm_temp}°C</p>
+                        <p className="text-base font-black text-orange-900">{analysisResult.soil_data.depth_6cm_temp}°C</p>
                       </div>
                       <div className="bg-orange-50 rounded-2xl p-3 border border-orange-100 text-center">
                         <Thermometer className="w-4 h-4 text-orange-400 mx-auto mb-1" />
                         <p className="text-[8px] text-orange-700 uppercase font-bold">18cm</p>
-                        <p className="text-base font-black text-orange-900">{analysisResult.soil.depth_18cm_temp}°C</p>
+                        <p className="text-base font-black text-orange-900">{analysisResult.soil_data.depth_18cm_temp}°C</p>
                       </div>
                     </div>
                     <div className="bg-blue-50/50 rounded-2xl p-4 border border-blue-100">
@@ -1560,10 +1705,10 @@ export function FieldPage() {
                       </h4>
                       <div className="space-y-3">
                         {[
-                          { label: "0-1 cm", val: analysisResult.soil.moisture_0_1cm },
-                          { label: "1-3 cm", val: analysisResult.soil.moisture_1_3cm },
-                          { label: "3-9 cm", val: analysisResult.soil.moisture_3_9cm },
-                          { label: "9-27 cm", val: analysisResult.soil.moisture_9_27cm },
+                          { label: "0-1 cm", val: analysisResult.soil_data.moisture_0_1cm },
+                          { label: "1-3 cm", val: analysisResult.soil_data.moisture_1_3cm },
+                          { label: "3-9 cm", val: analysisResult.soil_data.moisture_3_9cm },
+                          { label: "9-27 cm", val: analysisResult.soil_data.moisture_9_27cm },
                         ].map((m, i) => (
                           <div key={i} className="space-y-1">
                             <div className="flex justify-between text-[10px] font-bold">
@@ -1582,12 +1727,12 @@ export function FieldPage() {
                         <Wind className="w-4 h-4 text-teal-600" />
                         <div>
                           <p className="text-[9px] text-muted-foreground uppercase">Shamol</p>
-                          <p className="text-sm font-bold text-foreground">{analysisResult.soil.wind_speed} m/s</p>
+                          <p className="text-sm font-bold text-foreground">{analysisResult.soil_data.wind_speed} m/s</p>
                         </div>
                       </div>
                       <div className="text-right">
                         <p className="text-[9px] text-muted-foreground uppercase">Namlik</p>
-                        <p className="text-sm font-bold text-foreground">{analysisResult.soil.humidity}%</p>
+                        <p className="text-sm font-bold text-foreground">{analysisResult.soil_data.humidity}%</p>
                       </div>
                     </div>
                   </div>
@@ -1600,26 +1745,26 @@ export function FieldPage() {
               </div>
             )}
 
-            {analysisTab === "Ob-havo" && (
+            {!isAnalyzing && analysisTab === "Ob-havo" && (
               <div className="px-4 pt-4 space-y-4">
-                {analysisResult?.weather ? (
+                {analysisResult?.weather_data ? (
                   <div className="flex flex-col gap-4">
                     <div className="bg-gradient-to-br from-blue-500 to-blue-700 rounded-3xl p-5 text-white shadow-lg">
                       <div className="flex justify-between items-start mb-4">
                         <div>
                           <p className="text-[9px] text-blue-100 font-bold uppercase tracking-widest">O'rtacha harorat</p>
-                          <h2 className="text-4xl font-black">{analysisResult.weather.avg_temp}°C</h2>
+                          <h2 className="text-4xl font-black">{analysisResult.weather_data.avg_temp}°C</h2>
                         </div>
                         <CloudRain className="w-8 h-8 text-white/80" />
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="bg-white/10 rounded-xl p-3 backdrop-blur-sm">
                           <p className="text-[8px] text-blue-100 uppercase font-bold mb-1">Yillik yog'in</p>
-                          <p className="text-base font-bold">{analysisResult.weather.annual_precip} mm</p>
+                          <p className="text-base font-bold">{analysisResult.weather_data.annual_precip} mm</p>
                         </div>
                         <div className="bg-white/10 rounded-xl p-3 backdrop-blur-sm">
                           <p className="text-[8px] text-blue-100 uppercase font-bold mb-1">Namlik</p>
-                          <p className="text-base font-bold">{analysisResult.weather.avg_humidity}%</p>
+                          <p className="text-base font-bold">{analysisResult.weather_data.avg_humidity}%</p>
                         </div>
                       </div>
                     </div>
@@ -1627,7 +1772,7 @@ export function FieldPage() {
                       <h4 className="text-xs font-bold text-foreground uppercase tracking-wider mb-3">Mavsumiy o'zgarish</h4>
                       <div className="h-36 w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={analysisResult.weather.monthly}>
+                          <LineChart data={analysisResult.weather_data.monthly}>
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" vertical={false} />
                             <XAxis dataKey="month" fontSize={10} stroke="rgba(0,0,0,0.4)" tickFormatter={(v) => v.split("-")[1]} axisLine={false} tickLine={false} />
                             <YAxis fontSize={10} stroke="rgba(0,0,0,0.4)" axisLine={false} tickLine={false} />
@@ -1648,29 +1793,29 @@ export function FieldPage() {
               </div>
             )}
 
-            {analysisTab === "AI Tahlil" && (
+            {!isAnalyzing && analysisTab === "AI Tahlil" && (
               <div className="px-4 pt-4 space-y-4">
-                {analysisResult?.analysis ? (
+                {analysisResult?.ai_analysis ? (
                   <>
                     <div className="bg-primary/5 rounded-2xl p-4 border border-primary/10">
                       <div className="flex items-center gap-3 mb-3">
                         <Zap className="w-5 h-5 text-primary" />
                         <h3 className="font-bold text-base text-foreground">AI Xulosa</h3>
                       </div>
-                      <p className="text-sm leading-relaxed text-foreground/80 italic mb-3">"{analysisResult.analysis.xulosa}"</p>
+                      <p className="text-sm leading-relaxed text-foreground/80 italic mb-3">"{analysisResult.ai_analysis.xulosa}"</p>
                       <div className="bg-white/60 rounded-xl p-3 border border-primary/5">
                         <p className="text-[9px] font-bold text-primary uppercase mb-1">Eng foydali ekin:</p>
-                        <p className="text-sm font-bold text-foreground">{analysisResult.analysis.eng_foydali_ekin}</p>
+                        <p className="text-sm font-bold text-foreground">{analysisResult.ai_analysis.eng_foydali_ekin}</p>
                       </div>
                     </div>
 
-                    {analysisResult.analysis.bugun_nima_qilish?.length > 0 && (
+                    {analysisResult.ai_analysis.bugun_nima_qilish?.length > 0 && (
                       <div className="space-y-2">
                         <h4 className="text-xs font-bold text-foreground flex items-center gap-2">
                           <CheckCircle2 className="w-4 h-4 text-green-600" />
                           Bugun nima qilish kerak?
                         </h4>
-                        {analysisResult.analysis.bugun_nima_qilish.map((item: string, i: number) => (
+                        {analysisResult.ai_analysis.bugun_nima_qilish.map((item: string, i: number) => (
                           <div key={i} className="bg-green-50/50 rounded-xl p-3 border border-green-100 flex gap-2">
                             <span className="w-5 h-5 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">{i + 1}</span>
                             <p className="text-xs text-foreground/80">{item}</p>
@@ -1679,13 +1824,13 @@ export function FieldPage() {
                       </div>
                     )}
 
-                    {analysisResult.analysis.ekin_tavsiyalari?.length > 0 && (
+                    {analysisResult.ai_analysis.ekin_tavsiyalari?.length > 0 && (
                       <div className="space-y-3">
                         <h4 className="text-xs font-bold text-foreground flex items-center gap-2">
                           <Sprout className="w-4 h-4 text-primary" />
                           Ekin tavsiyalari
                         </h4>
-                        {analysisResult.analysis.ekin_tavsiyalari.map((item: any, i: number) => (
+                        {analysisResult.ai_analysis.ekin_tavsiyalari.map((item: any, i: number) => (
                           <div key={i} className="bg-gray-50 rounded-2xl p-4 border border-border">
                             <div className="flex justify-between items-start mb-2">
                               <h5 className="font-bold text-base text-foreground">{item.ekin}</h5>
@@ -1722,33 +1867,26 @@ export function FieldPage() {
               </div>
             )}
 
-            {analysisTab === "Suv" && (
+            {!isAnalyzing && analysisTab === "Suv" && (
               <div className="px-4 pt-4 space-y-4">
-                {analysisResult?.water ? (
+                {analysisResult?.ai_analysis ? (
                   <>
                     <div className="bg-blue-600 rounded-2xl p-5 text-white">
                       <div className="flex items-center gap-3 mb-3">
                         <Droplets className="w-6 h-6 text-white" />
-                        <h3 className="font-bold text-base">Suv Manbalari</h3>
+                        <h3 className="font-bold text-base">Suv holati</h3>
                       </div>
-                      <p className="text-sm leading-relaxed text-white/90">{analysisResult.water.summary?.plain_text}</p>
+                      <p className="text-sm leading-relaxed text-white/90">{analysisResult.ai_analysis.yer_tahlili.suv_holati}</p>
                     </div>
-                    <div className="space-y-2">
-                      <h4 className="text-xs font-bold text-foreground">Yaqin atrofdagi manbalar</h4>
-                      {analysisResult.water.sources?.map((source: any, i: number) => (
-                        <div key={i} className="bg-white rounded-xl p-3 border border-border flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <MapPin className={`w-4 h-4 ${source.irrigation_ok ? 'text-blue-600' : 'text-gray-400'}`} />
-                            <div>
-                              <p className="text-xs font-bold text-foreground">{source.name}</p>
-                              <p className="text-[9px] text-muted-foreground">{source.distance_text}</p>
-                            </div>
-                          </div>
-                          {source.irrigation_ok && (
-                            <span className="text-[8px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-bold">Mos</span>
-                          )}
+                    <div className="bg-white rounded-2xl p-4 border border-border">
+                      <h4 className="text-xs font-bold text-foreground">Sug'orish manbasi</h4>
+                      <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 flex justify-between items-center">
+                        <div>
+                          <p className="text-sm font-bold text-blue-900">{analysisResult.ai_analysis.sugorish_rejasi.manba}</p>
+                          <p className="text-[9px] text-blue-700/60 uppercase font-bold">Asosiy manba</p>
                         </div>
-                      ))}
+                        <span className="text-[9px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold">{analysisResult.ai_analysis.sugorish_rejasi.usul}</span>
+                      </div>
                     </div>
                   </>
                 ) : (

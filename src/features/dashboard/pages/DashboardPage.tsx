@@ -11,9 +11,11 @@ import {
   CloudRain,
   Calendar,
   Loader2,
+  Crown,
 } from "lucide-react";
 import { StatsCard } from "../components/StatsCard";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 import { riskColor } from "@/lib/utils";
 import { ROUTES } from "@/router/routes";
 
@@ -28,8 +30,11 @@ interface HistoryResult {
 export function DashboardPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { user } = useAuth();
   const [history, setHistory] = useState<HistoryResult[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const currentPlan = user?.plan || "Bepul";
 
   useEffect(() => {
     fetch("/api/satellite/history/", { credentials: 'include' })
@@ -108,6 +113,30 @@ export function DashboardPage() {
             <ArrowRight className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Upgrade Banner */}
+        {currentPlan === "Bepul" && (
+          <div className="bg-gradient-to-r from-amber-500 to-orange-600 rounded-3xl p-6 text-white flex items-center justify-between shadow-lg relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform duration-500">
+              <Crown className="w-24 h-24 rotate-12" />
+            </div>
+            <div className="relative z-10 flex items-center gap-6">
+              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
+                <Crown className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black tracking-tight">Max tarifga o'ting!</h3>
+                <p className="text-white/80 text-xs font-medium">Cheksiz dalalar va AI rasm tahlili imkoniyatiga ega bo'ling.</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => navigate(ROUTES.PRICING)}
+              className="relative z-10 bg-white text-orange-600 font-black text-xs uppercase tracking-wider px-6 py-3 rounded-xl shadow-xl hover:bg-gray-50 active:scale-95 transition-all"
+            >
+              Yangilash
+            </button>
+          </div>
+        )}
 
         {/* Stats row */}
         <div className="grid grid-cols-3 gap-4">
@@ -224,6 +253,23 @@ export function DashboardPage() {
           Dala maydonini belgilang, ekin rasmini yuklang va kasallik, suv hamda
           parvarish bo'yicha tavsiya oling.
         </p>
+
+        {currentPlan === "Bepul" && (
+          <div 
+            onClick={() => navigate(ROUTES.PRICING)}
+            className="w-full bg-gradient-to-br from-amber-400 to-orange-500 rounded-3xl p-5 mb-6 text-white text-left flex items-center gap-4 shadow-xl active:scale-95 transition-all"
+          >
+            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
+              <Crown className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <p className="text-sm font-black tracking-tight">Max tarifga o'ting!</p>
+              <p className="text-[10px] text-white/80 font-medium leading-tight">Barcha cheklovlarni olib tashlang</p>
+            </div>
+            <ArrowRight className="w-4 h-4 ml-auto opacity-60" />
+          </div>
+        )}
+
         <button
           onClick={handleStart}
           className="w-full max-w-xs bg-white text-primary font-bold text-lg py-4 rounded-2xl shadow-xl hover:bg-gray-50 active:scale-95 transition-all flex items-center justify-center gap-3"

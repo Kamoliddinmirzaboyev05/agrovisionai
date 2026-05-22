@@ -3,6 +3,7 @@ export const ROUTES = {
   REGISTER: '/register',
   HOME: '/',
   FIELD: '/field',
+  MY_FIELDS: '/my-fields',
   UPLOAD: '/field/upload',
   LOADING: '/field/loading',
   RESULT: '/field/result',

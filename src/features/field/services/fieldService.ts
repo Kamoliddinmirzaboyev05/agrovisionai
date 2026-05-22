@@ -5,6 +5,7 @@ import type { SavedField, AnalysisResult } from "@/types";
 const ENDPOINTS = {
   FIELDS: "/api/satellite/fields/",
   ANALYZE: "/api/satellite/analyze/",
+  HISTORY: "/api/satellite/history/",
 };
 
 export const fieldService = {
@@ -48,5 +49,12 @@ export const fieldService = {
     water_cycle?: number;
   }) => {
     return api.post<AnalysisResult>(ENDPOINTS.ANALYZE, data);
+  },
+
+  /**
+   * Dala tahlili tarixini olish
+   */
+  getFieldHistory: (id: number) => {
+    return api.get<AnalysisResult>(`${ENDPOINTS.HISTORY}${id}/`);
   },
 };

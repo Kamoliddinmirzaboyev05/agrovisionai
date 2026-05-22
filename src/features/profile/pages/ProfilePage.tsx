@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
-import { User, Globe, MapPin, Bell, HelpCircle, ChevronRight, LogOut } from 'lucide-react';
+import { User, Globe, MapPin, Bell, HelpCircle, ChevronRight, LogOut, Crown, Zap, Sprout } from 'lucide-react';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { useNavigate } from 'react-router';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { useConfirm } from '@/store/ConfirmContext';
+import { toast } from 'sonner';
 import { ROUTES } from '@/router/routes';
 
 export function ProfilePage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const confirm = useConfirm();
   const { user, logout } = useAuth();
   const [notifications, setNotifications] = useState(true);
   const [history, setHistory] = useState<any[]>([]);
@@ -28,15 +31,69 @@ export function ProfilePage() {
   const totalSotix = Math.round(totalAreaHa * 100);
   const uniqueFields = new Set(history.map(h => h.name)).size;
 
-  const handleLogout = () => {
-    logout();
-    navigate(ROUTES.LOGIN, { replace: true });
+  const handleLogout = async () => {
+    const isConfirmed = await confirm({
+      title: "Tizimdan chiqish",
+      description: "Haqiqatan ham tizimdan chiqmoqchimisiz?",
+      confirmText: "Chiqish",
+      variant: "destructive"
+    });
+
+    if (isConfirmed) {
+      logout();
+      navigate(ROUTES.LOGIN, { replace: true });
+      toast.success("Tizimdan chiqdingiz");
+    }
   };
 
   const displayName = user?.first_name || user?.username || '';
   const displayRegion = user?.region || 'Hudud belgilanmagan';
   const displayEmail = user?.email || '';
   const dateJoined = user?.date_joined ? new Date(user.date_joined).toLocaleDateString('uz-UZ') : '';
+  const currentPlan = user?.plan || "Bepul";
+
+  const planCard = (
+    <div className={`rounded-2xl p-5 border shadow-sm overflow-hidden relative ${
+      currentPlan === "Max" ? "bg-amber-50 border-amber-200" :
+      currentPlan === "Pro" ? "bg-primary/5 border-primary/20" :
+      "bg-white border-border"
+    }`}>
+      {currentPlan === "Max" && (
+        <div className="absolute top-0 right-0 p-3 opacity-10">
+          <Crown className="w-20 h-20 text-amber-600" />
+        </div>
+      )}
+      <div className="flex items-center gap-4 relative z-10">
+        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+          currentPlan === "Max" ? "bg-amber-100 text-amber-600" :
+          currentPlan === "Pro" ? "bg-primary/10 text-primary" :
+          "bg-gray-100 text-gray-500"
+        }`}>
+          {currentPlan === "Max" ? <Crown className="w-6 h-6" /> :
+           currentPlan === "Pro" ? <Zap className="w-6 h-6" /> :
+           <Sprout className="w-6 h-6" />}
+        </div>
+        <div className="flex-1">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Joriy Tarif</p>
+          <p className={`text-xl font-black ${
+            currentPlan === "Max" ? "text-amber-700" :
+            currentPlan === "Pro" ? "text-primary" :
+            "text-foreground"
+          }`}>{currentPlan}</p>
+        </div>
+        <button 
+          onClick={() => navigate(ROUTES.PRICING)}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            currentPlan === "Max" ? "bg-amber-500 text-white shadow-lg shadow-amber-200" :
+            currentPlan === "Pro" ? "bg-primary text-white shadow-lg shadow-primary/20" :
+            "bg-gray-900 text-white hover:bg-black"
+          }`}
+        >
+          {currentPlan === "Max" ? "Boshqarish" : "Yangilash"}
+        </button>
+      </div>
+    </div>
+  );
 
   const settingsCard = (
     <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
@@ -156,6 +213,7 @@ export function ProfilePage() {
                 )}
               </div>
             </div>
+            {planCard}
             {statsCard}
           </div>
           {/* Right: settings */}
@@ -185,10 +243,13 @@ export function ProfilePage() {
           </p>
         )}
       </div>
-      <div className="flex flex-col gap-3">
+
+      <div className="flex flex-col gap-4 pb-10">
+        {planCard}
+        {statsCard}
+        <h3 className="font-bold text-foreground mt-2">Sozlamalar</h3>
         {settingsCard}
         {helpBtn}
-        {statsCard}
         {logoutBtn}
       </div>
     </div>
